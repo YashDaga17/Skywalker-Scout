@@ -31,6 +31,7 @@ Skywalker Scout automates the entire due diligence workflow in four stages:
 
 4. **Report Dashboard (Streamlit)** -- Presents the results as a single professional due-diligence dossier with risk summary, concerns, positive signals, financial/legal/community sections, and source evidence.
 
+Deployed URL: https://skywalker-scout-qrghnzucawksbtc7qnnzdf.streamlit.app/
 ---
 
 ## Current Capabilities
@@ -45,6 +46,29 @@ Skywalker Scout automates the entire due diligence workflow in four stages:
 - **Professional dossier UI**: dark institutional theme, compact pipeline status, persisted last report, risk/strength sections, analytics charts, evidence ledger, and raw source expanders.
 
 ---
+## Interface Preview
+*Here is how the UI looks as an Intelligence Command Center:*
+Page: 1
+<img width="1255" height="613" alt="image" src="https://github.com/user-attachments/assets/47a0cd5c-81a8-489a-8410-f1f11a3486a3" />
+After Searching the results
+<img width="1245" height="614" alt="image" src="https://github.com/user-attachments/assets/d0abea06-0f60-47de-9ef2-4fe5606a1f5b" />
+Scrolling 
+<img width="1209" height="636" alt="image" src="https://github.com/user-attachments/assets/517eea3f-9a44-4abb-ae4b-718565ac98b4" />
+Scrolling
+<img width="1221" height="626" alt="image" src="https://github.com/user-attachments/assets/d535cb62-371d-4945-b351-b990c084b084" />
+Scrolling
+<img width="1231" height="613" alt="image" src="https://github.com/user-attachments/assets/250ba1f4-434f-421f-ab87-07e701a9cc62" />
+Scrolling
+<img width="1219" height="620" alt="image" src="https://github.com/user-attachments/assets/8a094865-2aff-45e8-a43d-3da995c2177e" />
+Scrolling
+<img width="1229" height="607" alt="image" src="https://github.com/user-attachments/assets/8a03bd52-fdaf-42db-a511-b0cc769d42c5" />
+Scrolling
+<img width="1207" height="608" alt="image" src="https://github.com/user-attachments/assets/96db8bab-7046-4508-b7ae-eed4fb09de01" />
+Scrolling
+<img width="1271" height="598" alt="image" src="https://github.com/user-attachments/assets/fff19ada-53bc-492d-a0f6-e0d7859ddc78" />
+
+---
+
 
 ## Architecture
 
