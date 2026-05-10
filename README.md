@@ -44,6 +44,9 @@ Deployed URL: https://skywalker-scout-qrghnzucawksbtc7qnnzdf.streamlit.app/
 - **Community intelligence**: searches Reddit with strict subreddit operators and scrapes discovered thread URLs instead of scraping Reddit homepages.
 - **Review intelligence**: uses Anakin Search snippets for Google ratings/reviews rather than scraping Google Maps directly.
 - **Professional dossier UI**: dark institutional theme, compact pipeline status, persisted last report, risk/strength sections, analytics charts, evidence ledger, and raw source expanders.
+- **Report exports**: download a board-ready Markdown report or the full raw intelligence JSON.
+- **Local report cache**: completed investigations are saved under `.cache/reports/` and can be reloaded from the sidebar.
+- **Sample report mode**: demo the full report experience without API calls or waiting for Anakin/Gemini.
 
 ---
 ## Interface Preview
@@ -140,6 +143,7 @@ Skywalker-Scout/
     anakin_engine.py     # Anakin AI client (search, reviews, deep research, polling)
     evidence_engine.py   # Evidence ledger, source reliability, contradiction checks
     rag_logic.py         # Gemini synthesis layer (scorecard generation)
+    report_actions.py    # Markdown/JSON exports, local report cache, sample report
     requirements.txt     # Python dependencies
     .env.example         # API key template
     .env                 # Your API keys (gitignored)
@@ -266,9 +270,12 @@ The UI provides:
 
 - **Professional dark theme** configured in `.streamlit/config.toml` and reinforced with app-level CSS.
 - **Sidebar Controls** with Run/Clear actions and a source-routing panel.
+- **Report Library** for loading cached reports or a built-in sample report.
 - **Compact Pipeline Status** using `st.status`, `st.progress`, and a collapsed event log so Anakin logs do not overwhelm the main page.
 - **Persisted Last Report** using `st.session_state["last_report"]`, so completed results remain visible after Streamlit reruns.
-- **Executive Summary** with overall exposure score and risk bar.
+- **Sidebar Exports** with Markdown and raw JSON downloads that stay out of the main dossier flow.
+- **Executive Summary** with a clearly labeled `/100` risk score, risk meaning, and risk bar.
+- **Location Anchor** using a compact map beside the executive summary when coordinates are available.
 - **Plotly Analytics** including section score diagnostics and source mix/reliability diagnostics.
 - **Single Dossier Flow** -- Financial, Legal/RERA, Infrastructure, Community, Reviews, and Evidence sections in one scrollable report.
 - **Risk Flags / Strength Signals** -- Investment risks and supporting positives presented together.
@@ -302,7 +309,24 @@ The application is designed for resilience:
 - Missing API keys are detected at startup with clear error messages
 - Gemini failures raise explicit errors rather than returning stale/mock data
 - Streamlit reruns preserve the last completed report in session state
+- Completed live reports are written to `.cache/reports/` for later reload
 - Pipeline logs are captured in a compact status container rather than printed as a wall of text
+- Empty or failed Anakin collection runs are marked as raw failed-collection reports instead of being sent to Gemini as if evidence existed
+
+---
+
+## Report Exports, Cache, and Demo Mode
+
+`report_actions.py` provides the report persistence and sharing layer:
+
+- **Markdown export**: creates a portable due-diligence report with executive summary, risk score, risk/strength signals, section summaries, evidence quality, and top sources.
+- **Raw JSON export**: downloads the full report payload, including scorecard, raw Anakin intelligence, evidence ledger, warnings, and source metadata.
+- **Sidebar placement**: export controls live in the sidebar after a report is generated or loaded, keeping the main report focused on analysis.
+- **Local cache**: saves completed live reports to `.cache/reports/{property_slug}.json`.
+- **Cached reload**: lets users reload previous investigations from the sidebar without spending another API call.
+- **Sample report**: loads a realistic demo dossier for presentations or development when API keys are unavailable.
+
+The `.cache/` directory is gitignored because cached reports can contain raw source text and investigation-specific data.
 
 ---
 
@@ -315,6 +339,9 @@ The application is designed for resilience:
 - Added Plotly section score and source reliability charts.
 - Fixed report disappearance after Streamlit reruns by storing the last report in `st.session_state`.
 - Replaced default Leaflet markers with `folium.CircleMarker` to avoid missing marker icon requests.
+- Added Markdown/JSON exports, local report cache, cached reload, and sample report mode.
+- Moved dossier exports into the sidebar, removed deprecated Streamlit width parameters, and added explicit handling for empty Anakin evidence runs.
+- Improved demo readability with native risk/strength callouts and clearer risk-score context.
 
 ---
 

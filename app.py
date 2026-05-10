@@ -18,6 +18,16 @@ from typing import Any
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
+from report_actions import (
+    build_markdown_report,
+    cache_report,
+    list_cached_reports,
+    load_cached_report,
+    make_report_payload,
+    report_json,
+    sample_report,
+    slugify_property_name,
+)
 
 try:
     import folium
@@ -25,6 +35,11 @@ try:
 except Exception:  # pragma: no cover - optional visual dependency
     folium = None
     st_folium = None
+
+try:
+    import pandas as pd
+except Exception:  # pragma: no cover - optional map dependency
+    pd = None
 
 load_dotenv()
 
@@ -446,7 +461,8 @@ div[data-testid="stMetric"] {
     padding: 0.75rem;
 }
 
-.stButton > button {
+.stButton > button,
+.stDownloadButton > button {
     background: #2563eb;
     color: white;
     border: 1px solid #3b82f6;
@@ -521,14 +537,14 @@ def esc(value: Any) -> str:
 
 def risk_label(score: int) -> str:
     if score <= 25:
-        return "Low exposure"
+        return "Low risk"
     if score <= 50:
-        return "Managed exposure"
+        return "Moderate risk"
     if score <= 65:
-        return "Elevated exposure"
+        return "Elevated risk"
     if score <= 80:
-        return "High exposure"
-    return "Critical exposure"
+        return "High risk"
+    return "Critical risk"
 
 
 def risk_color(score: int) -> str:
@@ -543,17 +559,95 @@ def risk_color(score: int) -> str:
     return "#f87171"
 
 
+def risk_explanation(score: int) -> str:
+    if score <= 25:
+        return "Low exposure. Lower is safer."
+    if score <= 50:
+        return "Moderate exposure. Lower is safer."
+    if score <= 65:
+        return "Elevated exposure. Review risk flags carefully."
+    if score <= 80:
+        return "High exposure. Requires strong source-backed mitigation."
+    return "Critical exposure. Avoid unless issues are resolved."
+
+
 def session_report() -> dict[str, Any] | None:
     report = st.session_state.get("last_report")
     return report if isinstance(report, dict) else None
 
 
 def store_report(property_name: str, scorecard: dict[str, Any] | None, intelligence: dict[str, Any]) -> None:
-    st.session_state["last_report"] = {
-        "property_name": property_name,
-        "scorecard": scorecard,
-        "intelligence": intelligence,
+    report = make_report_payload(property_name, scorecard, intelligence)
+    st.session_state["last_report"] = report
+    try:
+        cache_report(report)
+    except OSError:
+        st.warning("Report generated, but local cache write failed.")
+
+
+def usable_evidence_count(intelligence: dict[str, Any]) -> int:
+    """Count evidence that can reasonably support a formatted investment report."""
+    ledger_summary = ((intelligence.get("evidence_ledger") or {}).get("summary") or {})
+    ledger_count = as_int(ledger_summary.get("total_evidence_items"), fallback=0)
+    if ledger_count:
+        return ledger_count
+
+    total = 0
+    for key in (
+        "web_search",
+        "infra_search",
+        "google_reviews",
+        "rera_search",
+        "market_search",
+        "reddit_search",
+    ):
+        section = intelligence.get(key) or {}
+        total += len(section.get("results") or [])
+
+    for key in ("scraped_pages", "crawled_gov_pages"):
+        section = intelligence.get(key) or {}
+        total += sum(1 for page in section.get("results") or [] if page.get("markdown"))
+
+    agentic = intelligence.get("agentic_research") or {}
+    if agentic.get("success") and agentic.get("generated_json"):
+        total += 1
+
+    return total
+
+
+def annotate_collection_summary(intelligence: dict[str, Any]) -> None:
+    warnings = intelligence.get("errors") or []
+    evidence_count = usable_evidence_count(intelligence)
+    intelligence["collection_summary"] = {
+        "usable_evidence_items": evidence_count,
+        "warning_count": len(warnings),
+        "has_blocking_collection_gap": evidence_count == 0,
     }
+
+
+def render_sidebar_downloads(report: dict[str, Any] | None) -> None:
+    st.markdown("### Exports")
+    if not report:
+        st.caption("Run or load a report to enable dossier downloads.")
+        return
+
+    property_name = str(report.get("property_name") or "property-report")
+    filename_slug = slugify_property_name(property_name)
+    st.download_button(
+        "Download Dossier",
+        data=build_markdown_report(report),
+        file_name=f"{filename_slug}-due-diligence.md",
+        mime="text/markdown",
+        type="primary",
+        width="stretch",
+    )
+    st.download_button(
+        "Download Raw JSON",
+        data=report_json(report),
+        file_name=f"{filename_slug}-intelligence.json",
+        mime="application/json",
+        width="stretch",
+    )
 
 
 def as_int(value: Any, fallback: int = 50) -> int:
@@ -577,6 +671,20 @@ def progress_from_message(message: str, current: int) -> int:
     step = int(match.group(1))
     total = max(1, int(match.group(2)))
     return max(current, min(95, round(step / total * 100)))
+
+
+def scorecard_coordinates(scorecard: dict[str, Any]) -> tuple[float, float]:
+    coords = scorecard.get("location_coordinates", {})
+    try:
+        lat = float(coords.get("latitude")) if coords.get("latitude") is not None else None
+        lon = float(coords.get("longitude")) if coords.get("longitude") is not None else None
+    except (ValueError, TypeError):
+        lat, lon = None, None
+
+    # Demo-safe fallback: Sarjapur Road area.
+    if lat is None or lon is None:
+        return 12.9239, 77.6844
+    return lat, lon
 
 
 def coerce_list(value: Any) -> list[Any]:
@@ -673,55 +781,64 @@ def render_signal_panels(scorecard: dict[str, Any]) -> None:
     red_flags = coerce_list(scorecard.get("red_flags", []))
     green_flags = coerce_list(scorecard.get("green_flags", []))
     st.markdown(
-        """
-        <div class="section">
-            <div class="signal-grid">
-                <div class="signal-panel concern">
-                    <div class="signal-title">Risk Flags</div>
-                    <div class="item-list">
-        """
-        + list_items(red_flags, "No critical concerns were extracted from the current evidence.")
-        + """
-                    </div>
-                </div>
-                <div class="signal-panel positive">
-                    <div class="signal-title">Strength Signals</div>
-                    <div class="item-list">
-        """
-        + list_items(green_flags, "No positive signals were extracted from the current evidence.")
-        + """
-                    </div>
-                </div>
-            </div>
-        </div>
-        """,
+        "<div class='section'>"
+        + section_header("Signals", "Risk Flags and Strength Signals")
+        + "</div>",
         unsafe_allow_html=True,
     )
+    risk_col, strength_col = st.columns(2)
+    with risk_col:
+        st.markdown("**Risk Flags**")
+        if red_flags:
+            for flag in red_flags:
+                st.warning(str(flag))
+        else:
+            st.info("No material risk flags were extracted from the current evidence.")
+    with strength_col:
+        st.markdown("**Strength Signals**")
+        if green_flags:
+            for flag in green_flags:
+                st.success(str(flag))
+        else:
+            st.info("No strength signals were extracted from the current evidence.")
 
 
-def render_risk_and_summary(scorecard: dict[str, Any]) -> None:
+def render_risk_and_summary(scorecard: dict[str, Any], property_name: str) -> None:
     risk_score = as_int(scorecard.get("risk_score"), 50)
     summary = scorecard.get("executive_summary", "Analysis pending.")
     color = risk_color(risk_score)
     st.markdown(
         "<div class='section'>"
         + section_header("Executive View", "Investment Risk Summary")
-        + "<div class='risk-overview'>"
-        + "<div class='risk-score-box'>"
-        + "<div class='risk-label'>Overall exposure</div>"
-        + f"<div class='risk-number' style='color:{color};'>{risk_score}</div>"
-        + f"<div class='risk-caption'>{esc(risk_label(risk_score))}</div>"
-        + "<div class='risk-track'>"
-        + f"<div class='risk-fill' style='width:{max(0, min(100, risk_score))}%; background:{color};'></div>"
-        + "</div>"
-        + "</div>"
-        + "<div class='summary-box'>"
-        + f"<p>{esc(summary)}</p>"
-        + "</div>"
-        + "</div>"
         + "</div>",
         unsafe_allow_html=True,
     )
+    score_col, summary_col, map_col = st.columns([0.8, 1.35, 1.0])
+    with score_col:
+        st.markdown(
+            "<div class='risk-overview'>"
+            + "<div class='risk-score-box'>"
+            + "<div class='risk-label'>Overall risk score</div>"
+            + f"<div class='risk-number' style='color:{color};'>{risk_score}/100</div>"
+            + f"<div class='risk-caption'>{esc(risk_label(risk_score))}</div>"
+            + f"<div class='risk-caption'>{esc(risk_explanation(risk_score))}</div>"
+            + "<div class='risk-track'>"
+            + f"<div class='risk-fill' style='width:{max(0, min(100, risk_score))}%; background:{color};'></div>"
+            + "</div>"
+            + "</div>"
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    with summary_col:
+        st.markdown(
+            "<div class='summary-box'>"
+            + f"<p>{esc(summary)}</p>"
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    with map_col:
+        st.markdown("**Location Context**")
+        render_location_anchor(scorecard, property_name)
 
 
 def render_metric_strip(scorecard: dict[str, Any], evidence_summary: dict[str, Any]) -> None:
@@ -838,9 +955,9 @@ def render_report_charts(scorecard: dict[str, Any], intelligence: dict[str, Any]
     )
     col_score, col_source = st.columns(2)
     with col_score:
-        st.plotly_chart(score_fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(score_fig, width="stretch", config={"displayModeBar": False})
     with col_source:
-        st.plotly_chart(source_fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(source_fig, width="stretch", config={"displayModeBar": False})
 
 
 def render_analysis_section(
@@ -958,6 +1075,14 @@ def render_evidence_ledger(intelligence: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def render_location_anchor(scorecard: dict[str, Any], property_name: str) -> None:
+    lat, lon = scorecard_coordinates(scorecard)
+    if pd is not None:
+        st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}), zoom=12)
+    else:
+        st.caption(f"{property_name}: {lat:.4f}, {lon:.4f}")
+
+
 def render_location(scorecard: dict[str, Any], property_name: str) -> None:
     coords = scorecard.get("location_coordinates", {})
     try:
@@ -965,7 +1090,6 @@ def render_location(scorecard: dict[str, Any], property_name: str) -> None:
         lon = float(coords.get("longitude")) if coords.get("longitude") is not None else None
     except (ValueError, TypeError):
         lat, lon = None, None
-
     if lat is None or lon is None:
         return
 
@@ -1053,6 +1177,7 @@ def render_raw_expanders(intelligence: dict[str, Any]) -> None:
 
 
 def render_raw_only(intelligence: dict[str, Any]) -> None:
+    collection_summary = intelligence.get("collection_summary") or {}
     st.markdown(
         "<div class='section'>"
         + section_header("Raw Intelligence", "Gemini Formatting Unavailable")
@@ -1061,6 +1186,11 @@ def render_raw_only(intelligence: dict[str, Any]) -> None:
         + "</div>",
         unsafe_allow_html=True,
     )
+    if collection_summary.get("has_blocking_collection_gap") or usable_evidence_count(intelligence) == 0:
+        st.error(
+            "Anakin did not return usable source evidence for this run. "
+            "The upstream search or agentic research service may be failing; review Collection Warnings below."
+        )
     render_evidence_ledger(intelligence)
     render_raw_expanders(intelligence)
 
@@ -1081,7 +1211,13 @@ def render_scorecard(property_name: str, scorecard: dict[str, Any], intelligence
         unsafe_allow_html=True,
     )
 
-    render_risk_and_summary(scorecard)
+    collection_summary = intelligence.get("collection_summary") or {}
+    if collection_summary.get("warning_count"):
+        st.warning(
+            f"Anakin returned {collection_summary['warning_count']} collection warning(s). "
+            "Use the evidence ledger and raw expanders before treating this as final."
+        )
+    render_risk_and_summary(scorecard, property_name)
     render_metric_strip(scorecard, evidence_summary)
     render_report_charts(scorecard, intelligence)
     render_signal_panels(scorecard)
@@ -1176,8 +1312,12 @@ def run_investigation(property_name: str, has_gemini: bool) -> None:
             status.update(label="Investigation failed.", state="error", expanded=True)
             return
 
+        annotate_collection_summary(intelligence)
+        evidence_count = intelligence["collection_summary"]["usable_evidence_items"]
         scorecard = None
-        if has_gemini:
+        if evidence_count == 0:
+            record_status("No usable source evidence returned by Anakin.")
+        elif has_gemini:
             record_status("Formatting evidence into scorecard...")
             from rag_logic import format_scorecard
 
@@ -1195,13 +1335,18 @@ def run_investigation(property_name: str, has_gemini: bool) -> None:
         status.update(label="Investigation complete.", state="complete", expanded=False)
 
     store_report(property_name, scorecard, intelligence)
-    render_results(property_name, scorecard, intelligence)
+    st.rerun()
 
 
 def main() -> None:
     render_app_header()
     stored_report = session_report()
     stored_property_name = (stored_report or {}).get("property_name") or "JRC Wildwoods, Sarjapur road"
+    cached_reports = list_cached_reports()
+    cached_lookup = {report["label"]: report["path"] for report in cached_reports}
+    selected_cached_label = None
+    load_cached = False
+    load_sample = False
 
     with st.sidebar:
         st.markdown("### Investigation")
@@ -1213,9 +1358,19 @@ def main() -> None:
         )
         col_run, col_clear = st.columns(2)
         with col_run:
-            investigate = st.button("Run", type="primary", use_container_width=True)
+            investigate = st.button("Run", type="primary", width="stretch")
         with col_clear:
-            clear_report = st.button("Clear", type="secondary", use_container_width=True)
+            clear_report = st.button("Clear", type="secondary", width="stretch")
+        st.divider()
+        st.markdown("### Report Library")
+        if cached_reports:
+            selected_cached_label = st.selectbox("Saved Reports", list(cached_lookup.keys()))
+            load_cached = st.button("Load Saved Report", width="stretch")
+        else:
+            st.caption("No saved local reports yet.")
+        load_sample = st.button("Load Sample Report", width="stretch")
+        st.divider()
+        render_sidebar_downloads(stored_report)
         st.divider()
         st.markdown("### Source Routing")
         st.markdown(
@@ -1256,8 +1411,21 @@ def main() -> None:
 
     if clear_report:
         st.session_state.pop("last_report", None)
-        render_empty_state()
-        return
+        st.rerun()
+
+    if load_sample:
+        report = sample_report()
+        st.session_state["last_report"] = report
+        st.rerun()
+
+    if load_cached and selected_cached_label:
+        try:
+            report = load_cached_report(cached_lookup[selected_cached_label])
+        except (OSError, ValueError):
+            st.error("Could not load the selected cached report.")
+            return
+        st.session_state["last_report"] = report
+        st.rerun()
 
     if investigate:
         property_name = property_name_input or ""

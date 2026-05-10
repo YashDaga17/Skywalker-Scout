@@ -288,5 +288,9 @@ The Streamlit app uses the Anakin status callback to keep execution progress com
 - The latest task is shown as a single line.
 - Full pipeline messages are stored in a collapsed "Pipeline event log" expander.
 - The final report is stored in `st.session_state["last_report"]`, so it remains visible after widget-triggered reruns.
+- Completed live reports are also cached under `.cache/reports/` for quick reload from the sidebar.
+- Markdown and raw JSON exports are rendered in the sidebar after a report is generated or loaded.
+- The Streamlit sidebar includes a sample report mode that bypasses Anakin/Gemini and demonstrates the final dossier shape.
+- If Anakin returns no usable source evidence, the app records a raw failed-collection report and skips Gemini formatting.
 
 This avoids the earlier wall-of-text problem where every Anakin log line appeared directly in the main report area.

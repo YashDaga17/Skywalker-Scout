@@ -154,6 +154,15 @@ class AnakinClient:
                 headers=self.headers,
                 timeout=30,
             )
+            if resp.status_code >= 500:
+                logger.warning("Search returned HTTP %s; retrying once.", resp.status_code)
+                time.sleep(1)
+                resp = requests.post(
+                    f"{BASE_URL}/search",
+                    json={"prompt": prompt, "limit": limit},
+                    headers=self.headers,
+                    timeout=30,
+                )
             resp.raise_for_status()
             data = resp.json()
             results = data.get("results", [])
@@ -170,7 +179,7 @@ class AnakinClient:
             return {"success": False, "results": [], "raw_response": None, "error": msg}
         except requests.exceptions.HTTPError as exc:
             msg = f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
-            logger.error("Search HTTP error: %s", msg)
+            logger.warning("Search HTTP error: %s", msg)
             return {"success": False, "results": [], "raw_response": None, "error": msg}
         except requests.exceptions.RequestException as exc:
             logger.error("Search failed: %s", exc)
@@ -281,7 +290,7 @@ class AnakinClient:
             logger.info("Agentic search job submitted: %s", job_id)
             return {"success": True, "job_id": job_id, "error": None}
         except requests.exceptions.RequestException as exc:
-            logger.error("Agentic search submission failed: %s", exc)
+            logger.warning("Agentic search submission failed: %s", exc)
             return {"success": False, "job_id": None, "error": str(exc)}
 
     # ------------------------------------------------------------------
@@ -359,7 +368,7 @@ class AnakinClient:
 
                 if status == "failed":
                     error_msg = data.get("error", "Job failed without details.")
-                    logger.error("Agentic search failed: %s", error_msg)
+                    logger.warning("Agentic search failed: %s", error_msg)
                     return {
                         "success": False,
                         "status": "failed",
