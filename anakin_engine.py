@@ -17,6 +17,7 @@ import time
 import logging
 import requests
 from typing import Optional, Callable
+from urllib.parse import urlparse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +30,84 @@ BASE_URL = "https://api.anakin.io/v1"
 # Agentic search recommended polling: 10s, typical completion: 1-5 min
 AGENTIC_POLL_INTERVAL = 10
 AGENTIC_TIMEOUT = 300  # 5 minutes max
+
+
+PRIORITY_DOMAINS = {
+    "rera.karnataka.gov.in": 100,
+    "housing.com": 86,
+    "nobroker.in": 82,
+    "reddit.com": 74,
+    "99acres.com": 58,
+    "magicbricks.com": 56,
+}
+
+
+def _merge_search_results(*responses: dict) -> dict:
+    """Merge multiple Anakin search responses while preserving order."""
+    merged = {
+        "success": False,
+        "results": [],
+        "raw_response": {"merged": []},
+        "error": None,
+    }
+    errors = []
+    seen_urls = set()
+
+    for response in responses:
+        if not response:
+            continue
+        merged["raw_response"]["merged"].append(response.get("raw_response"))
+        if response.get("success"):
+            merged["success"] = True
+        elif response.get("error"):
+            errors.append(response["error"])
+
+        for result in response.get("results", []):
+            url = result.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                merged["results"].append(result)
+
+    merged["error"] = "; ".join(errors) if errors and not merged["success"] else None
+    return merged
+
+
+def _domain_from_url(url: str) -> str:
+    try:
+        domain = urlparse(url).netloc.lower()
+        return domain[4:] if domain.startswith("www.") else domain
+    except Exception:
+        return ""
+
+
+def _domain_priority(url: str) -> int:
+    domain = _domain_from_url(url)
+    for target, score in PRIORITY_DOMAINS.items():
+        if target in domain:
+            return score
+    if domain.endswith(".gov.in") or domain.endswith(".nic.in"):
+        return 90
+    return 40
+
+
+def _is_government_url(url: str) -> bool:
+    domain = _domain_from_url(url)
+    return (
+        "rera.karnataka.gov.in" in domain
+        or domain.endswith(".gov.in")
+        or domain.endswith(".nic.in")
+    )
+
+
+def _is_scrapable_priority_url(url: str) -> bool:
+    if not url:
+        return False
+    lowered = url.lower()
+    if "google.com/maps" in lowered or "maps.google" in lowered:
+        return False
+    if "reddit.com" in lowered:
+        return "/comments/" in lowered or "/r/bangalore/" in lowered or "/r/indiainvestments/" in lowered
+    return True
 
 
 class AnakinClient:
@@ -97,6 +176,62 @@ class AnakinClient:
             logger.error("Search failed: %s", exc)
             return {"success": False, "results": [], "raw_response": None, "error": str(exc)}
 
+    def perform_search(self, prompt: str, limit: int = 10) -> dict:
+        """
+        Compatibility alias for targeted source searches.
+
+        Older notes and examples refer to perform_search(); internally this
+        delegates to the canonical Anakin Search API wrapper.
+        """
+        return self.search(prompt, limit=limit)
+
+    # ------------------------------------------------------------------
+    # Targeted source searches
+    # ------------------------------------------------------------------
+
+    def rera_property_search(self, property_name: str) -> dict:
+        """Prioritize Karnataka RERA as the legal source of truth."""
+        prompt = (
+            f'site:rera.karnataka.gov.in "{property_name}" Bangalore '
+            f'K-RERA RERA registration project status approval compliance'
+        )
+        return self.perform_search(prompt, limit=8)
+
+    def market_price_search(self, property_name: str) -> dict:
+        """Target Housing.com and NoBroker for pricing, rent, and amenities."""
+        housing_prompt = (
+            f'site:housing.com "{property_name}" Bangalore price per sqft '
+            f'amenities floor plan possession resale rent'
+        )
+        nobroker_prompt = (
+            f'site:nobroker.in "{property_name}" Bangalore owner sale rent '
+            f'price amenities maintenance'
+        )
+        return _merge_search_results(
+            self.perform_search(housing_prompt, limit=5),
+            self.perform_search(nobroker_prompt, limit=5),
+        )
+
+    def reddit_community_search(self, property_name: str) -> dict:
+        """
+        Search Reddit via Anakin Search, then scrape the thread URLs later.
+
+        This follows the safer flow for Reddit: search with strict subreddit
+        operators first, then send the resulting thread pages to the scraper.
+        """
+        bangalore_prompt = (
+            f'site:reddit.com/r/bangalore "{property_name}" '
+            f'water OR traffic OR builder OR delay OR maintenance'
+        )
+        investing_prompt = (
+            f'site:reddit.com/r/IndiaInvestments "{property_name}" '
+            f'real estate OR investment OR builder OR resale OR delay'
+        )
+        return _merge_search_results(
+            self.perform_search(bangalore_prompt, limit=5),
+            self.perform_search(investing_prompt, limit=5),
+        )
+
     # ------------------------------------------------------------------
     # Google Maps Reviews (specialized search query)
     # ------------------------------------------------------------------
@@ -108,7 +243,7 @@ class AnakinClient:
         """
         prompt = (
             f'"{property_name}" Bangalore Google Maps reviews ratings '
-            f'"star rating" OR "buyer review" OR "resident review"'
+            f'"star rating" "based on" reviews OR "buyer review" OR "resident review"'
         )
         return self.search(prompt, limit=8)
 
@@ -440,9 +575,11 @@ class AnakinClient:
           1. Web search for property/builder info
           2. Web search for infrastructure/development in the area
           3. Google Maps reviews search
-          4. Submit agentic deep research (async)
-          5. Batch scrape top URLs & Crawl official/Gov sites
-          6. Poll for all results
+          4. Priority source searches (K-RERA, Housing, NoBroker, Reddit)
+          5. Submit agentic deep research (async)
+          6. Batch scrape top URLs & Crawl official/Gov sites
+          7. Poll for all results
+          8. Build evidence ledger
         """
         def _update(msg: str):
             logger.info(msg)
@@ -454,14 +591,18 @@ class AnakinClient:
             "web_search": None,
             "infra_search": None,
             "google_reviews": None,
+            "rera_search": None,
+            "market_search": None,
+            "reddit_search": None,
             "scraped_pages": None,
             "crawled_gov_pages": None,
             "agentic_research": None,
+            "evidence_ledger": None,
             "errors": [],
         }
 
         # -- Step 1: Web search -----------------------------------------------
-        _update("Step 1/6 -- Anakin Search: property data...")
+        _update("Step 1/8 -- Anakin Search: property data...")
         search_prompt = (
             f"{property_name} Bangalore real estate RERA registration "
             f"reviews complaints price builder reputation"
@@ -472,7 +613,7 @@ class AnakinClient:
             intelligence["errors"].append(f"Web search: {web_result['error']}")
 
         # -- Step 2: Infrastructure search ------------------------------------
-        _update("Step 2/6 -- Anakin Search: infrastructure & development...")
+        _update("Step 2/8 -- Anakin Search: infrastructure & development...")
         infra_prompt = (
             f"infrastructure development road widening metro expansion "
             f"water supply projects near {property_name} Bangalore official news"
@@ -483,45 +624,91 @@ class AnakinClient:
             intelligence["errors"].append(f"Infra search: {infra_result['error']}")
 
         # -- Step 3: Google reviews -------------------------------------------
-        _update("Step 3/6 -- Anakin Search: Google Maps reviews...")
+        _update("Step 3/8 -- Anakin Search: Google Maps review snippets...")
         reviews_result = self.google_reviews_search(property_name)
         intelligence["google_reviews"] = reviews_result
         if not reviews_result["success"]:
             intelligence["errors"].append(f"Google reviews: {reviews_result['error']}")
 
-        # -- Step 4: Submit agentic research ----------------------------------
-        _update("Step 4/6 -- Anakin Agentic Search: submitting research...")
+        # -- Step 4: Priority source searches ---------------------------------
+        _update("Step 4/8 -- Priority Search: K-RERA legal registry...")
+        rera_result = self.rera_property_search(property_name)
+        intelligence["rera_search"] = rera_result
+        if not rera_result["success"]:
+            intelligence["errors"].append(f"K-RERA search: {rera_result['error']}")
+
+        _update("Step 4/8 -- Priority Search: Housing.com and NoBroker market data...")
+        market_result = self.market_price_search(property_name)
+        intelligence["market_search"] = market_result
+        if not market_result["success"]:
+            intelligence["errors"].append(f"Market search: {market_result['error']}")
+
+        _update("Step 4/8 -- Priority Search: Reddit community threads...")
+        reddit_result = self.reddit_community_search(property_name)
+        intelligence["reddit_search"] = reddit_result
+        if not reddit_result["success"]:
+            intelligence["errors"].append(f"Reddit search: {reddit_result['error']}")
+
+        # -- Step 5: Submit agentic research ----------------------------------
+        _update("Step 5/8 -- Anakin Agentic Search: submitting research...")
         research_prompt = (
             f"Comprehensive due diligence analysis of {property_name} "
             f"real estate project in Bangalore, India. "
             f"Cover: construction delays, legal issues, RERA compliance status, "
             f"water supply problems, homebuyer complaints, builder track record, "
-            f"price trends, infrastructure development (roads/metro), and community sentiment."
+            f"price trends, infrastructure development (roads/metro), and community sentiment. "
+            f"Prioritize K-RERA official data, Housing.com, NoBroker, Reddit r/bangalore, "
+            f"Reddit r/IndiaInvestments, and Google review snippets when available."
         )
         agentic_job = self.submit_agentic_search(research_prompt)
 
-        # -- Step 5: Scrape & Crawl -------------------------------------------
+        # -- Step 6: Scrape & Crawl -------------------------------------------
         scrape_job_id = None
         crawl_job_id = None
         
         top_urls = []
         gov_url = None
         
-        # Collect URLs from both searches
-        all_search_results = (web_result.get("results", []) + infra_result.get("results", []))
-        
-        for r in all_search_results:
+        # Collect URLs from general and priority searches. Google review snippets
+        # are intentionally not scraped directly; the snippets are the signal.
+        all_search_results = (
+            rera_result.get("results", [])
+            + market_result.get("results", [])
+            + reddit_result.get("results", [])
+            + web_result.get("results", [])
+            + infra_result.get("results", [])
+        )
+
+        prioritized_results = sorted(
+            all_search_results,
+            key=lambda item: _domain_priority(item.get("url", "")),
+            reverse=True,
+        )
+
+        reddit_count = 0
+        for r in prioritized_results:
             url = r.get("url", "")
-            if not url: continue
+            if not url:
+                continue
             
             # Identify government sites (like RERA Karnataka, BBMP, BDA)
-            if (".gov.in" in url or ".nic.in" in url) and not gov_url:
+            if _is_government_url(url) and not gov_url:
                 gov_url = url
-            elif url not in top_urls and len(top_urls) < 5:
+                continue
+
+            if not _is_scrapable_priority_url(url) or url in top_urls:
+                continue
+
+            if "reddit.com" in url.lower():
+                if reddit_count >= 3:
+                    continue
+                reddit_count += 1
+
+            if len(top_urls) < 8:
                 top_urls.append(url)
 
         if top_urls:
-            _update(f"Step 5/6 -- Anakin URL Scraper: scraping {len(top_urls)} property pages (with anti-bot browser)...")
+            _update(f"Step 6/8 -- Anakin URL Scraper: scraping {len(top_urls)} priority pages (with anti-bot browser)...")
             scrape_submit = self.batch_scrape_urls(top_urls, use_browser=True)
             if scrape_submit["success"]:
                 scrape_job_id = scrape_submit["job_id"]
@@ -529,14 +716,14 @@ class AnakinClient:
                 intelligence["errors"].append(f"URL scraper: {scrape_submit['error']}")
 
         if gov_url:
-            _update(f"Step 5/6 -- Anakin Crawl: targeting official gov site ({gov_url})...")
+            _update(f"Step 6/8 -- Anakin Crawl: targeting official/legal site ({gov_url})...")
             crawl_submit = self.submit_crawl_job(gov_url, max_pages=3, use_browser=True)
             if crawl_submit["success"]:
                 crawl_job_id = crawl_submit["job_id"]
             else:
                 intelligence["errors"].append(f"Crawl API: {crawl_submit['error']}")
 
-        # -- Step 6: Poll for all async results -------------------------------
+        # -- Step 7: Poll for all async results -------------------------------
         
         if scrape_job_id:
             _update("Polling URL Scraper results...")
@@ -557,7 +744,7 @@ class AnakinClient:
             intelligence["crawled_gov_pages"] = {"success": False, "results": [], "error": "Skipped"}
 
         if agentic_job["success"]:
-            _update("Step 6/6 -- Waiting for Anakin Agentic Search to complete...")
+            _update("Step 7/8 -- Waiting for Anakin Agentic Search to complete...")
             # Reduce timeout slightly so user isn't stuck forever, and rely on the other data if it fails
             poll_result = self.poll_agentic_search(
                 agentic_job["job_id"],
@@ -570,6 +757,22 @@ class AnakinClient:
         else:
             intelligence["errors"].append(f"Agentic research submit: {agentic_job['error']}")
             intelligence["agentic_research"] = {"success": False, "generated_json": None, "error": agentic_job["error"]}
+
+        # -- Step 8: Evidence ledger -----------------------------------------
+        _update("Step 8/8 -- Building evidence ledger and source reliability scores...")
+        try:
+            from evidence_engine import build_evidence_ledger
+
+            intelligence["evidence_ledger"] = build_evidence_ledger(intelligence)
+        except Exception as exc:
+            logger.exception("Evidence ledger build failed.")
+            intelligence["evidence_ledger"] = {
+                "sources": [],
+                "items": [],
+                "summary": {},
+                "contradictions": [],
+            }
+            intelligence["errors"].append(f"Evidence ledger: {exc}")
 
         # -- Summary ----------------------------------------------------------
         error_count = len(intelligence["errors"])

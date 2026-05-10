@@ -27,7 +27,9 @@ Skywalker Scout automates the entire due diligence workflow in three stages:
 
 2. **AI Synthesis (Google Gemini)** -- Sends all gathered intelligence to Gemini 3.1 Flash Lite, which reconciles conflicting information, identifies red/green flags, and produces a structured Due Diligence Scorecard with risk scoring.
 
-3. **Report Dashboard (Streamlit)** -- Presents the results in a clean, professional dashboard with a risk gauge, scorecard tabs (Financial, Legal/RERA, Community, Google Reviews), flagged concerns, and access to all raw source data.
+3. **Evidence Ledger** -- Converts raw Anakin output into traceable claims with source type, source reliability, confidence, freshness, and contradiction checks.
+
+4. **Report Dashboard (Streamlit)** -- Presents the results as a single professional due-diligence dossier with risk summary, concerns, positive signals, financial/legal/community sections, and source evidence.
 
 ---
 
@@ -81,6 +83,7 @@ User Input (Property Name)
 | Frontend | Streamlit 1.30+ | Interactive dashboard with dark theme and sidebar |
 | Visualizations | Plotly | Interactive gauge charts and data rendering |
 | Data Engine | Anakin Scraper API | Search API, URL Scraper (Anti-Bot), Crawl API, Agentic Search |
+| Evidence Engine | Python | Source classification, reliability scoring, evidence ledger, contradiction checks |
 | Formatter | Google Gemini 3.1 | Reformats Anakin data into structured JSON scorecard |
 | HTTP Client | requests | Anakin API communication |
 | Config | python-dotenv | Environment variable management |
@@ -91,6 +94,7 @@ User Input (Property Name)
 Skywalker-Scout/
     app.py              # Streamlit UI and main entry point
     anakin_engine.py     # Anakin AI client (search, reviews, deep research, polling)
+    evidence_engine.py   # Evidence ledger, source reliability, contradiction checks
     rag_logic.py         # Gemini synthesis layer (scorecard generation)
     requirements.txt     # Python dependencies
     .env.example         # API key template
@@ -157,7 +161,11 @@ The `AnakinClient` class provides comprehensive intelligence gathering:
 
 **Search API** (`POST /v1/search` -- synchronous)
 - **`search(prompt, limit)`** -- AI-powered web search for property and infrastructure data.
+- **`perform_search(prompt, limit)`** -- Alias for targeted source searches.
 - **`google_reviews_search(property_name)`** -- Specialized search for Google Maps ratings.
+- **`rera_property_search(property_name)`** -- Prioritizes K-RERA official records.
+- **`market_price_search(property_name)`** -- Prioritizes Housing.com and NoBroker for pricing, rent, resale, and amenities.
+- **`reddit_community_search(property_name)`** -- Searches Reddit threads through strict subreddit operators before scraping thread URLs.
 
 **URL Scraper** (`POST /v1/url-scraper/batch` -- async with polling)
 - **`batch_scrape_urls(urls, use_browser=True)`** -- Scrapes top property URLs using a stealth, anti-bot cloud browser to bypass Cloudflare and security checks.
@@ -183,16 +191,26 @@ The `gemini_fixer(intelligence)` function:
 
 The scorecard contains: Financial Viability, Legal/RERA Status, Community Sentiment, Google Reviews, Risk Score, Executive Summary, Red Flags, and Green Flags.
 
-### 3. Streamlit App (`app.py`)
+### 3. Evidence Engine (`evidence_engine.py`)
+
+The evidence engine builds an auditable trail from Anakin data before Gemini formats the report:
+
+- Classifies sources as official RERA, government, market portal, owner marketplace, community forum, Google review signal, or unclassified web.
+- Gives priority to `rera.karnataka.gov.in`, then Housing.com, NoBroker, Reddit, and Google review snippets.
+- Produces evidence items with claim, category, source id, confidence, freshness, and signal.
+- Detects simple contradictions, such as positive and negative evidence appearing in the same category.
+
+### 4. Streamlit App (`app.py`)
 
 The UI provides:
 
-- **Sidebar Controls** for entering property names while keeping the dashboard clean.
+- **Sidebar Controls** for entering property names and showing source-priority order.
 - **Live Status Updates** showing each pipeline stage in real-time.
-- **Plotly Risk Meter** -- Dynamic, interactive gauge chart with color-coded risk zones.
+- **Plotly Risk Meter** -- Dynamic gauge chart with professional exposure bands.
 - **Executive Summary** -- 3-4 sentence investment verdict based on official data.
-- **Scorecard Tabs** -- Detailed analysis for Financial, Legal, Infrastructure, Community, and Reviews.
-- **Red/Green Flags** -- Critical concerns and positive signals clearly marked.
+- **Single Dossier Flow** -- Financial, Legal/RERA, Infrastructure, Community, Reviews, and Evidence sections in one scrollable report.
+- **Critical Concerns / Positive Signals** -- Investment risks and supporting positives presented together.
+- **Evidence Ledger** -- Source reliability, confidence, and top evidence items.
 - **Raw Intelligence** -- Expandable view of all source data from Anakin to maintain full transparency.
 
 ---

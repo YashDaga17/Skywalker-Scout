@@ -21,9 +21,25 @@ Used to rapidly find relevant URLs, news, and Google Maps reviews.
 
 ### **Python Methods:**
 - `client.search(prompt: str, limit: int = 10)`
+- `client.perform_search(prompt: str, limit: int = 10)`
 - `client.google_reviews_search(property_name: str)`
+- `client.rera_property_search(property_name: str)`
+- `client.market_price_search(property_name: str)`
+- `client.reddit_community_search(property_name: str)`
 
 **What it does:** Submits an AI-optimized search query. Returns immediate results without polling.
+
+### Source Priority Strategy
+
+The pipeline now runs targeted searches in addition to general web search:
+
+1. **K-RERA**: `site:rera.karnataka.gov.in` for project registration, approval, and compliance status.
+2. **Housing.com**: pricing, amenities, possession, resale, and rent signals.
+3. **NoBroker.in**: owner-written sale/rent descriptions and unfiltered property reality.
+4. **Reddit**: strict subreddit searches for `r/bangalore` and `r/IndiaInvestments`; the top thread URLs are then passed to URL Scraper.
+5. **Google Reviews**: search snippets only, using queries such as `"Property Name" Bangalore Google Maps reviews ratings "star rating"`.
+
+Google Maps pages are not scraped directly. The Search API snippets are used because Google often indexes aggregate ratings and helpful review text.
 
 **Returns:**
 ```python
@@ -149,10 +165,13 @@ To tie it all together, `anakin_engine.py` exposes `run_full_pipeline(property_n
 1. **Search:** Executes `search()` for property data.
 2. **Infra Search:** Executes `search()` specifically for roads/metro near the property.
 3. **Review Search:** Executes `google_reviews_search()`.
-4. **Agentic Submission:** Fires off `submit_agentic_search()` asynchronously.
-5. **Scrape/Crawl Submission:** Extracts top URLs from steps 1 & 2. 
+4. **Priority Source Search:** Executes targeted K-RERA, Housing.com, NoBroker, and Reddit searches.
+5. **Agentic Submission:** Fires off `submit_agentic_search()` asynchronously.
+6. **Scrape/Crawl Submission:** Extracts priority URLs from general and targeted searches. 
    - Submits `batch_scrape_urls()` with `useBrowser=True`.
-   - If a `.gov.in` site is found, submits `submit_crawl_job()`.
-6. **Polling:** Blocks and polls the Scrape, Crawl, and Agentic jobs until all are `completed` (or timed out).
+   - Scrapes up to three Reddit thread URLs discovered via Search API.
+   - If a K-RERA/`.gov.in`/`.nic.in` site is found, submits `submit_crawl_job()`.
+7. **Polling:** Blocks and polls the Scrape, Crawl, and Agentic jobs until all are `completed` (or timed out).
+8. **Evidence Ledger:** Builds source reliability scores, evidence claims, confidence, freshness, and contradiction checks.
 
 **Final Output:** Returns a massive `intelligence` dictionary containing all the aggregated JSON from the endpoints above. This dictionary is then handed off to Gemini (`rag_logic.py`) to be formatted into the final UI scorecard.

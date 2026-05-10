@@ -70,6 +70,8 @@ Rules:
 2. If Anakin's data is insufficient for a section, say "Insufficient data from search" and score 5 (neutral).
 3. Reconcile conflicting information by noting both sources.
 4. Keep all summaries factual and traceable to the provided data.
+5. Prefer official K-RERA/government evidence over portals, portals over forums, and forums/reviews as sentiment signals.
+6. Treat the evidence ledger as the audit trail. High-reliability evidence should carry more weight than low-reliability snippets.
 
 Return ONLY a valid JSON object with these exact keys:
 {
@@ -110,8 +112,8 @@ Return ONLY a valid JSON object with these exact keys:
     "key_projects": ["<nearby infra projects>"]
   },
   "location_coordinates": {
-    "latitude": <float, guess if possible, e.g. 12.9226 for Sarjapur>,
-    "longitude": <float, guess if possible, e.g. 77.6685 for Sarjapur>
+    "latitude": <float from Anakin data or null>,
+    "longitude": <float from Anakin data or null>
   },
   "risk_score": <0-100, where 0=very safe and 100=extremely risky>,
   "executive_summary": "<3-4 sentence verdict based strictly on Anakin data. Mention any official government/RERA data if found.>",
@@ -131,30 +133,34 @@ def _format_intelligence(intelligence: dict) -> str:
     """
     parts = [f"# Property: {intelligence.get('property_name', 'Unknown')}\n"]
 
+    def append_search_section(key: str, heading: str):
+        section = intelligence.get(key, {})
+        if section.get("success") and section.get("results"):
+            parts.append(f"## {heading}")
+            for r in section["results"]:
+                parts.append(f"- **{r.get('title', 'N/A')}**")
+                parts.append(f"  URL: {r.get('url', 'N/A')}")
+                if r.get("date"):
+                    parts.append(f"  Date: {r.get('date')}")
+                parts.append(f"  {r.get('snippet', 'No snippet')}\n")
+
     # Web search results (from Anakin /v1/search)
-    ws = intelligence.get("web_search", {})
-    if ws.get("success") and ws.get("results"):
-        parts.append("## Anakin Web Search Results")
-        for r in ws["results"]:
-            parts.append(f"- **{r.get('title', 'N/A')}**")
-            parts.append(f"  URL: {r.get('url', 'N/A')}")
-            parts.append(f"  Date: {r.get('date', 'N/A')}")
-            parts.append(f"  {r.get('snippet', 'No snippet')}\n")
+    append_search_section("web_search", "Anakin Web Search Results")
+
+    # Priority legal source
+    append_search_section("rera_search", "Priority Source: K-RERA Official Search")
+
+    # Priority market sources
+    append_search_section("market_search", "Priority Sources: Housing.com and NoBroker Market Search")
 
     # Google reviews (from Anakin /v1/search with targeted query)
-    gr = intelligence.get("google_reviews", {})
-    if gr.get("success") and gr.get("results"):
-        parts.append("## Anakin Google Maps Reviews Search")
-        for r in gr["results"]:
-            parts.append(f"- **{r.get('title', 'N/A')}**")
-            parts.append(f"  URL: {r.get('url', 'N/A')}")
-            parts.append(f"  {r.get('snippet', 'No snippet')}\n")
+    append_search_section("google_reviews", "Anakin Google Maps Reviews Search Snippets")
+
+    # Reddit search results. Thread pages are scraped separately when available.
+    append_search_section("reddit_search", "Priority Source: Reddit Community Search")
 
     # Infra search
-    if intelligence.get("infra_search", {}).get("success") and intelligence["infra_search"].get("results"):
-        parts.append("## Anakin Infrastructure Search Results")
-        for r in intelligence["infra_search"]["results"]:
-            parts.append(f"- **{r.get('title', 'N/A')}**\n  URL: {r.get('url', 'N/A')}\n  {r.get('snippet', 'No snippet')}\n")
+    append_search_section("infra_search", "Anakin Infrastructure Search Results")
 
     # Scraped pages (from Anakin /v1/url-scraper/batch -- full page content)
     sp = intelligence.get("scraped_pages", {})
@@ -192,6 +198,29 @@ def _format_intelligence(intelligence: dict) -> str:
                 parts.append(json.dumps(structured, indent=2))
         else:
             parts.append(str(gj))
+
+    # Evidence ledger: deterministic audit trail and source reliability scores.
+    ledger = intelligence.get("evidence_ledger") or {}
+    summary = ledger.get("summary") or {}
+    items = ledger.get("items") or []
+    contradictions = ledger.get("contradictions") or []
+    if summary or items:
+        parts.append("## Evidence Ledger and Source Reliability")
+        if summary:
+            parts.append(json.dumps(summary, indent=2))
+        for item in items[:18]:
+            parts.append(
+                "- "
+                f"[{item.get('id')}] {item.get('category')} | "
+                f"confidence={item.get('confidence')} | "
+                f"source={item.get('source_id')} | "
+                f"signal={item.get('signal')}: {item.get('claim')}"
+            )
+            if item.get("excerpt"):
+                parts.append(f"  Excerpt: {item.get('excerpt')[:350]}")
+        if contradictions:
+            parts.append("### Potential Contradictions")
+            parts.append(json.dumps(contradictions[:5], indent=2))
 
     # Data collection warnings
     errors = intelligence.get("errors", [])

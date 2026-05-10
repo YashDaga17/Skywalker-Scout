@@ -2,379 +2,978 @@
 app.py
 
 Skywalker Scout -- Autonomous Real Estate Due Diligence Engine.
-Streamlit UI with dark theme, glassmorphism cards, and SVG risk gauge.
 
-Primary data engine: Anakin (Search API, Agentic Search, URL Scraper).
-Gemini is used only to format Anakin's output into a scorecard.
+Primary data engine: Anakin. Gemini is used only to format Anakin's output
+into a scorecard. The Streamlit app presents a single professional due
+diligence dossier with source reliability and evidence traceability.
 """
 
+from __future__ import annotations
+
+import html
 import os
-import json
-import math
-import math
-import streamlit as st
-import plotly.express as px
+import re
+from typing import Any
+
 import plotly.graph_objects as go
-import requests
-from streamlit_lottie import st_lottie
-from streamlit_extras.metric_cards import style_metric_cards
-import folium
-from streamlit_folium import st_folium
-# from pdf_export import generate_pdf_report
+import streamlit as st
 from dotenv import load_dotenv
+
+try:
+    import folium
+    from streamlit_folium import st_folium
+except Exception:  # pragma: no cover - optional visual dependency
+    folium = None
+    st_folium = None
 
 load_dotenv()
 
-# -- Page Config ---------------------------------------------------------------
+
 st.set_page_config(
     page_title="Skywalker Scout | Real Estate Intelligence",
     page_icon="S",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
-# -- Custom CSS ----------------------------------------------------------------
-st.markdown("""
+
+st.markdown(
+    """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --bg: #f5f7fb;
+    --panel: #ffffff;
+    --panel-soft: #f8fafc;
+    --border: #d9e2ec;
+    --text: #101828;
+    --muted: #667085;
+    --faint: #98a2b3;
+    --blue: #175cd3;
+    --blue-soft: #eff6ff;
+    --amber: #b54708;
+    --amber-soft: #fffaeb;
+    --clay: #7a271a;
+    --clay-soft: #fff4ed;
+    --slate: #344054;
+}
 
 .stApp {
-    background: linear-gradient(165deg, #0a0a1a 0%, #0e1525 40%, #111827 100%);
+    background: var(--bg);
+    color: var(--text);
     font-family: 'Inter', sans-serif;
 }
-.block-container { max-width: 1200px; padding-top: 2rem; }
 
-.scout-header {
-    text-align: center;
-    padding: 2rem 0 1rem;
+.block-container {
+    max-width: 1180px;
+    padding-top: 1.4rem;
+    padding-bottom: 3rem;
 }
-.scout-title {
-    font-family: 'Outfit', sans-serif;
-    font-size: 3.2rem;
+
+[data-testid="stSidebar"] {
+    background: #0f172a;
+}
+
+[data-testid="stSidebar"] * {
+    color: #e5e7eb;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem 0 1.2rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.1rem;
+}
+
+.brand-title {
+    font-size: 2rem;
     font-weight: 800;
-    background: linear-gradient(135deg, #00d2ff, #7b2ff7, #ff6b6b);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 0.3rem;
-    letter-spacing: -1px;
+    letter-spacing: 0;
+    color: var(--text);
+    margin: 0;
 }
-.scout-subtitle {
-    color: #8b95a5;
-    font-size: 1.1rem;
-    font-weight: 300;
-    letter-spacing: 2px;
+
+.brand-subtitle {
+    color: var(--muted);
+    margin-top: 0.25rem;
+    font-size: 0.98rem;
+}
+
+.status-pill {
+    background: var(--blue-soft);
+    border: 1px solid #bfdbfe;
+    color: var(--blue);
+    border-radius: 999px;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.dossier {
+    display: flex;
+    flex-direction: column;
+    gap: 0.95rem;
+}
+
+.report-hero {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.25rem;
+    margin-bottom: 0.85rem;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.report-eyebrow {
+    color: var(--blue);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
-.glass-card {
-    background: rgba(255,255,255,0.04);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 16px;
-    padding: 1.8rem;
-    margin-bottom: 1rem;
-    transition: all 0.3s ease;
-}
-.glass-card:hover {
-    border-color: rgba(0,210,255,0.2);
-    box-shadow: 0 8px 32px rgba(0,210,255,0.08);
-}
-
-.risk-score-value {
-    font-family: 'Outfit', sans-serif;
-    font-size: 3rem;
+.report-title {
+    color: var(--text);
+    font-size: 1.7rem;
     font-weight: 800;
-    margin-top: -1rem;
-}
-.risk-label {
-    color: #8b95a5;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 2px;
+    line-height: 1.2;
+    margin-top: 0.25rem;
 }
 
-.score-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.85rem;
+.report-subtitle {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-top: 0.35rem;
 }
-.score-high { background: rgba(16,185,129,0.15); color: #34d399; }
-.score-mid { background: rgba(251,191,36,0.15); color: #fbbf24; }
-.score-low { background: rgba(239,68,68,0.15); color: #ef4444; }
 
-.flag-item {
+.section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.05rem 1.15rem;
+    margin-bottom: 0.85rem;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.section-header {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 0.6rem 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    color: #c9d1d9;
-    font-size: 0.92rem;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
 }
-.flag-item:last-child { border-bottom: none; }
 
-.source-card {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-    padding: 0.8rem 1rem;
-    margin-bottom: 0.5rem;
-    transition: all 0.2s ease;
-}
-.source-card:hover {
-    background: rgba(255,255,255,0.06);
-    border-color: rgba(0,210,255,0.15);
-}
-.source-title {
-    color: #58a6ff;
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: 4px;
-}
-.source-snippet {
-    color: #8b949e;
-    font-size: 0.82rem;
-    line-height: 1.4;
-}
-.source-url {
-    color: #484f58;
+.section-kicker {
+    color: var(--blue);
     font-size: 0.72rem;
-    margin-top: 4px;
-    word-break: break-all;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
 }
 
-.summary-card {
-    background: linear-gradient(135deg, rgba(0,210,255,0.08), rgba(123,47,247,0.08));
-    border: 1px solid rgba(0,210,255,0.15);
-    border-radius: 16px;
-    padding: 1.5rem 2rem;
-    color: #e6edf3;
-    font-size: 1.05rem;
-    line-height: 1.7;
-    margin: 1rem 0;
+.section-title {
+    font-size: 1.12rem;
+    font-weight: 800;
+    color: var(--text);
 }
 
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-    background: rgba(255,255,255,0.03);
-    border-radius: 12px;
-    padding: 4px;
+.section-summary {
+    color: var(--slate);
+    font-size: 0.96rem;
+    line-height: 1.6;
+    margin: 0.4rem 0 0;
 }
-.stTabs [data-baseweb="tab"] {
+
+.score-chip {
+    min-width: 72px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.35rem 0.6rem;
+    color: var(--slate);
+    background: var(--panel-soft);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.risk-overview {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.75fr);
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.risk-score-box {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #8b95a5;
-    font-weight: 500;
-}
-.stTabs [aria-selected="true"] {
-    background: rgba(0,210,255,0.1) !important;
-    color: #00d2ff !important;
+    padding: 1rem;
 }
 
-@keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 20px rgba(0,210,255,0.1); }
-    50% { box-shadow: 0 0 40px rgba(0,210,255,0.2); }
+.risk-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
-.pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
 
-.stTextInput > div > div > input {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 12px !important;
-    color: #e6edf3 !important;
-    font-size: 1.1rem !important;
-    padding: 0.8rem 1.2rem !important;
+.risk-number {
+    color: var(--text);
+    font-size: 3rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-top: 0.5rem;
 }
-.stTextInput > div > div > input:focus {
-    border-color: rgba(0,210,255,0.4) !important;
-    box-shadow: 0 0 20px rgba(0,210,255,0.1) !important;
+
+.risk-caption {
+    color: var(--slate);
+    font-size: 0.92rem;
+    font-weight: 700;
+    margin-top: 0.35rem;
+}
+
+.risk-track {
+    background: #e4e7ec;
+    border-radius: 999px;
+    height: 10px;
+    overflow: hidden;
+    margin-top: 1rem;
+}
+
+.risk-fill {
+    height: 10px;
+    border-radius: 999px;
+}
+
+.summary-box {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    min-height: 100%;
+}
+
+.summary-box p {
+    color: var(--slate);
+    line-height: 1.65;
+    margin: 0;
+}
+
+.metric-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+}
+
+.metric-tile {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem;
+}
+
+.metric-label {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.metric-value {
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 800;
+    margin-top: 0.28rem;
+    overflow-wrap: anywhere;
+}
+
+.signal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.signal-panel {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.95rem;
+    background: var(--panel-soft);
+}
+
+.signal-panel.concern {
+    border-color: #fed7aa;
+    background: var(--amber-soft);
+}
+
+.signal-panel.positive {
+    border-color: #bfdbfe;
+    background: var(--blue-soft);
+}
+
+.signal-title {
+    font-weight: 800;
+    margin-bottom: 0.55rem;
+    color: var(--text);
+}
+
+.item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.list-item {
+    color: var(--slate);
+    font-size: 0.92rem;
+    line-height: 1.48;
+    border-top: 1px solid rgba(16, 24, 40, 0.08);
+    padding-top: 0.45rem;
+}
+
+.list-item:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
+.source-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.source-row {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+}
+
+.source-title {
+    font-weight: 800;
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.source-snippet {
+    color: var(--slate);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin-top: 0.25rem;
+}
+
+.source-url {
+    color: var(--muted);
+    font-size: 0.74rem;
+    margin-top: 0.28rem;
+    overflow-wrap: anywhere;
+}
+
+.evidence-row {
+    border-top: 1px solid var(--border);
+    padding: 0.75rem 0;
+}
+
+.evidence-row:first-child {
+    border-top: none;
+}
+
+.evidence-meta {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.evidence-claim {
+    color: var(--text);
+    font-weight: 700;
+    margin-top: 0.25rem;
+}
+
+.evidence-excerpt {
+    color: var(--slate);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    margin-top: 0.25rem;
+}
+
+.empty-state {
+    background: var(--panel);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 1.2rem;
+    color: var(--muted);
+}
+
+div[data-testid="stMetric"] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
 }
 
 .stButton > button {
-    background: linear-gradient(135deg, #00d2ff, #7b2ff7) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 12px !important;
-    padding: 0.7rem 2rem !important;
-    font-weight: 600 !important;
-    font-size: 1rem !important;
-    transition: all 0.3s ease !important;
-    width: 100%;
-}
-.stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 25px rgba(0,210,255,0.3) !important;
+    background: #175cd3;
+    color: white;
+    border: 1px solid #175cd3;
+    border-radius: 8px;
+    font-weight: 800;
 }
 
-[data-testid="stMetric"] {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 12px;
-    padding: 1rem;
+.stTextInput input {
+    background: #ffffff;
+    border-radius: 8px;
+    color: #101828 !important;
+}
+
+@media (max-width: 900px) {
+    .app-header,
+    .risk-overview,
+    .signal-grid,
+    .metric-row {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
-# -- Helper Functions ----------------------------------------------------------
+def esc(value: Any) -> str:
+    """HTML-escape display values used in custom markup."""
+    if value is None:
+        return ""
+    return html.escape(str(value))
 
-def get_risk_color(score):
+
+def risk_label(score: int) -> str:
     if score <= 25:
-        return "#10b981"
-    elif score <= 50:
-        return "#34d399"
-    elif score <= 65:
-        return "#fbbf24"
-    elif score <= 80:
-        return "#f59e0b"
-    else:
-        return "#ef4444"
+        return "Low exposure"
+    if score <= 50:
+        return "Managed exposure"
+    if score <= 65:
+        return "Elevated exposure"
+    if score <= 80:
+        return "High exposure"
+    return "Critical exposure"
 
 
-def get_risk_label(score):
+def risk_color(score: int) -> str:
     if score <= 25:
-        return "LOW RISK"
-    elif score <= 50:
-        return "MODERATE"
-    elif score <= 65:
-        return "ELEVATED"
-    elif score <= 80:
-        return "HIGH RISK"
-    else:
-        return "CRITICAL"
+        return "#175cd3"
+    if score <= 50:
+        return "#0f766e"
+    if score <= 65:
+        return "#b54708"
+    if score <= 80:
+        return "#93370d"
+    return "#7a271a"
 
 
-def get_score_badge(score):
-    if score >= 7:
-        cls = "score-high"
-    elif score >= 5:
-        cls = "score-mid"
-    else:
-        cls = "score-low"
-    return f'<span class="score-badge {cls}">{score}/10</span>'
+def session_report() -> dict[str, Any] | None:
+    report = st.session_state.get("last_report")
+    return report if isinstance(report, dict) else None
 
 
-def render_section(section, label):
-    score = section.get("score", "N/A")
-    summary = section.get("summary", "No data available.")
-    key_points = section.get("key_points", [])
+def store_report(property_name: str, scorecard: dict[str, Any] | None, intelligence: dict[str, Any]) -> None:
+    st.session_state["last_report"] = {
+        "property_name": property_name,
+        "scorecard": scorecard,
+        "intelligence": intelligence,
+    }
 
-    badge = get_score_badge(score) if isinstance(score, int) else f"<span>{score}</span>"
-    st.markdown(f"""
-    <div class="glass-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;">
-            <span style="font-size:1.1rem;font-weight:600;color:#e6edf3;">{label}</span>
-            {badge}
+
+def as_int(value: Any, fallback: int = 50) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def coerce_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+def list_items(items: Any, empty: str = "No data available.") -> str:
+    items = [item for item in coerce_list(items) if item not in (None, "")]
+    if not items:
+        return f"<div class='list-item'>{esc(empty)}</div>"
+    return "".join(f"<div class='list-item'>{esc(item)}</div>" for item in items if item)
+
+
+def metric_tile(label: str, value: Any) -> str:
+    return (
+        "<div class='metric-tile'>"
+        f"<div class='metric-label'>{esc(label)}</div>"
+        f"<div class='metric-value'>{esc(value if value not in (None, '') else 'N/A')}</div>"
+        "</div>"
+    )
+
+
+def section_header(kicker: str, title: str, score: Any = None) -> str:
+    score_html = ""
+    if score is not None:
+        score_text = f"{score}/10" if isinstance(score, int) else score
+        score_html = f"<div class='score-chip'>{esc(score_text)}</div>"
+    return (
+        "<div class='section-header'>"
+        "<div>"
+        f"<div class='section-kicker'>{esc(kicker)}</div>"
+        f"<div class='section-title'>{esc(title)}</div>"
+        "</div>"
+        f"{score_html}"
+        "</div>"
+    )
+
+
+def render_app_header() -> None:
+    st.markdown(
+        """
+        <div class="app-header">
+            <div>
+                <h1 class="brand-title">Skywalker Scout</h1>
+                <div class="brand-subtitle">Institutional real-estate due diligence for Bengaluru properties.</div>
+            </div>
+            <div class="status-pill">Anakin-first intelligence</div>
         </div>
-        <p style="color:#c9d1d9;line-height:1.6;margin-bottom:1rem;">{summary}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if key_points:
-        for pt in key_points:
-            st.markdown(f"<div class='flag-item'>-- {pt}</div>", unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def render_flags(flags, flag_type="red"):
-    marker = "[!]" if flag_type == "red" else "[+]"
-    for flag in flags:
-        st.markdown(f"<div class='flag-item'>{marker} {flag}</div>", unsafe_allow_html=True)
-
-
-def render_sources(results):
-    for r in results:
-        title = r.get("title", "Untitled")
-        snippet = r.get("snippet", "")
-        url = r.get("url", "")
-        date = r.get("date", "")
-        date_str = f" | {date}" if date else ""
-        st.markdown(f"""
-        <div class="source-card">
-            <div class="source-title">{title}</div>
-            <div class="source-snippet">{snippet}</div>
-            <div class="source-url">{url}{date_str}</div>
+def render_empty_state() -> None:
+    st.markdown(
+        """
+        <div class="empty-state">
+            Enter a Bengaluru property or builder in the sidebar and run an investigation.
+            The report will prioritize K-RERA, Housing.com, NoBroker, Reddit, and Google review snippets.
         </div>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-# -- Helpers -------------------------------------------------------------------
-
-@st.cache_data
-def load_lottieurl(url: str):
-    r = requests.get(url)
-    if r.status_code != 200:
-        return None
-    return r.json()
-
-# -- Main App -----------------------------------------------------------------
-
-def main():
-    st.markdown("""
-    <div class="scout-header">
-        <div class="scout-title">Skywalker Scout</div>
-        <div class="scout-subtitle">Autonomous Real Estate Due Diligence Engine</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
-
-    # Use sidebar for inputs to create a cleaner main dashboard
-    with st.sidebar:
-        st.markdown("<h2 style='color:#00d2ff;'>Configuration</h2>", unsafe_allow_html=True)
-        property_name = st.text_input(
-            "Property or Builder Name",
-            placeholder="e.g., Prestige Lakeside...",
-            help="Enter the name of the project and location"
+def render_sources(results: list[dict[str, Any]]) -> None:
+    if not results:
+        st.info("No source results available.")
+        return
+    rows = []
+    for result in results:
+        title = esc(result.get("title", "Untitled"))
+        snippet = esc(result.get("snippet", ""))
+        url = esc(result.get("url", ""))
+        date = esc(result.get("date", ""))
+        date_text = f" | {date}" if date else ""
+        rows.append(
+            "<div class='source-row'>"
+            f"<div class='source-title'>{title}</div>"
+            f"<div class='source-snippet'>{snippet}</div>"
+            f"<div class='source-url'>{url}{date_text}</div>"
+            "</div>"
         )
-        investigate = st.button("Investigate", width="stretch")
-        st.markdown("<hr style='border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:0.8rem; color:#8b95a5;'>Using Anakin API for intelligent agentic search, web scraping, and government site crawling.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='source-list'>" + "".join(rows) + "</div>", unsafe_allow_html=True)
 
-    # Validate API keys
-    anakin_key = os.getenv("ANAKIN_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
 
-    if not anakin_key:
-        st.markdown("""
-        <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);
-             border-radius:10px;padding:0.8rem 1.2rem;margin:0.5rem 0;color:#ef4444;font-size:0.85rem;">
-            <strong>Missing ANAKIN_API_KEY</strong> -- This is required. Anakin is the primary data engine.
-            Add it to your <code>.env</code> file.
+def render_signal_panels(scorecard: dict[str, Any]) -> None:
+    red_flags = coerce_list(scorecard.get("red_flags", []))
+    green_flags = coerce_list(scorecard.get("green_flags", []))
+    st.markdown(
+        """
+        <div class="section">
+            <div class="signal-grid">
+                <div class="signal-panel concern">
+                    <div class="signal-title">Risk Flags</div>
+                    <div class="item-list">
+        """
+        + list_items(red_flags, "No critical concerns were extracted from the current evidence.")
+        + """
+                    </div>
+                </div>
+                <div class="signal-panel positive">
+                    <div class="signal-title">Strength Signals</div>
+                    <div class="item-list">
+        """
+        + list_items(green_flags, "No positive signals were extracted from the current evidence.")
+        + """
+                    </div>
+                </div>
+            </div>
         </div>
-        """, unsafe_allow_html=True)
-
-    if not gemini_key:
-        st.markdown("""
-        <div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);
-             border-radius:10px;padding:0.8rem 1.2rem;margin:0.5rem 0;color:#fbbf24;font-size:0.85rem;">
-            <strong>GEMINI_API_KEY not set</strong> -- Gemini is used to format Anakin's results
-            into a structured scorecard. Without it, raw Anakin data will be shown.
-        </div>
-        """, unsafe_allow_html=True)
-
-    if investigate and property_name.strip():
-        if not anakin_key:
-            st.error("Cannot proceed without ANAKIN_API_KEY.")
-            return
-        run_investigation(property_name.strip(), has_gemini=bool(gemini_key))
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def run_investigation(property_name, has_gemini):
+def render_risk_and_summary(scorecard: dict[str, Any]) -> None:
+    risk_score = as_int(scorecard.get("risk_score"), 50)
+    summary = scorecard.get("executive_summary", "Analysis pending.")
+    color = risk_color(risk_score)
+    st.markdown(
+        "<div class='section'>"
+        + section_header("Executive View", "Investment Risk Summary")
+        + "<div class='risk-overview'>"
+        + "<div class='risk-score-box'>"
+        + "<div class='risk-label'>Overall exposure</div>"
+        + f"<div class='risk-number' style='color:{color};'>{risk_score}</div>"
+        + f"<div class='risk-caption'>{esc(risk_label(risk_score))}</div>"
+        + "<div class='risk-track'>"
+        + f"<div class='risk-fill' style='width:{max(0, min(100, risk_score))}%; background:{color};'></div>"
+        + "</div>"
+        + "</div>"
+        + "<div class='summary-box'>"
+        + f"<p>{esc(summary)}</p>"
+        + "</div>"
+        + "</div>"
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_metric_strip(scorecard: dict[str, Any], evidence_summary: dict[str, Any]) -> None:
+    fin = scorecard.get("financial_viability", {})
+    legal = scorecard.get("legal_rera_status", {})
+    grev = scorecard.get("google_reviews", {})
+    metrics = [
+        metric_tile("Price per sqft", fin.get("price_per_sqft", "N/A")),
+        metric_tile("RERA status", legal.get("compliance_status", "Unknown")),
+        metric_tile("Google rating", grev.get("average_rating", "N/A")),
+        metric_tile("Evidence quality", f"{evidence_summary.get('quality_score', 0)}/100"),
+    ]
+    st.markdown(
+        "<div class='section'><div class='metric-row'>"
+        + "".join(metrics)
+        + "</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_analysis_section(
+    kicker: str,
+    title: str,
+    section: dict[str, Any],
+    detail_fields: list[tuple[str, str]],
+    extra_items: list[Any] | None = None,
+) -> None:
+    score = section.get("score")
+    if isinstance(score, str) and score.isdigit():
+        score = int(score)
+    summary = section.get("summary", "No summary available.")
+
+    details = []
+    for label, key in detail_fields:
+        details.append(metric_tile(label, section.get(key, "N/A")))
+
+    key_points = coerce_list(section.get("key_points", []))
+    if extra_items:
+        key_points = key_points + coerce_list(extra_items)
+
+    html_block = (
+        "<div class='section'>"
+        + section_header(kicker, title, score)
+        + f"<p class='section-summary'>{esc(summary)}</p>"
+    )
+    if details:
+        html_block += "<div class='metric-row'>" + "".join(details) + "</div>"
+    if key_points:
+        html_block += (
+            "<div style='margin-top:0.85rem;' class='item-list'>"
+            + list_items(key_points)
+            + "</div>"
+        )
+    html_block += "</div>"
+    st.markdown(html_block, unsafe_allow_html=True)
+
+
+def render_evidence_ledger(intelligence: dict[str, Any]) -> dict[str, Any]:
+    ledger = intelligence.get("evidence_ledger") or {}
+    summary = ledger.get("summary") or {}
+    sources = ledger.get("sources") or []
+    items = ledger.get("items") or []
+    contradictions = ledger.get("contradictions") or []
+
+    metrics = [
+        metric_tile("Sources", summary.get("total_sources", 0)),
+        metric_tile("Evidence items", summary.get("total_evidence_items", 0)),
+        metric_tile("Official sources", summary.get("official_sources", 0)),
+        metric_tile("High-confidence items", summary.get("high_confidence_items", 0)),
+    ]
+
+    st.markdown(
+        "<div class='section'>"
+        + section_header("Audit Trail", "Evidence Ledger and Source Reliability")
+        + "<div class='metric-row'>"
+        + "".join(metrics)
+        + "</div>"
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if contradictions:
+        st.markdown(
+            "<div class='section'>"
+            + section_header("Evidence Review", "Potential Contradictions")
+            + "<div class='item-list'>"
+            + list_items([c.get("summary", c) for c in contradictions])
+            + "</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    if sources:
+        top_sources = sorted(sources, key=lambda s: s.get("priority", 0), reverse=True)[:8]
+        rows = []
+        for source in top_sources:
+            rows.append(
+                "<div class='source-row'>"
+                f"<div class='source-title'>{esc(source.get('source_type', 'source'))} "
+                f"({esc(source.get('reliability', ''))})</div>"
+                f"<div class='source-snippet'>{esc(source.get('rationale', ''))}</div>"
+                f"<div class='source-url'>{esc(source.get('url', ''))}</div>"
+                "</div>"
+            )
+        st.markdown(
+            "<div class='section'>"
+            + section_header("Source Ranking", "Priority Sources Used")
+            + "<div class='source-list'>"
+            + "".join(rows)
+            + "</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    if items:
+        rows = []
+        for item in items[:12]:
+            rows.append(
+                "<div class='evidence-row'>"
+                f"<div class='evidence-meta'>{esc(item.get('id'))} | "
+                f"{esc(item.get('category'))} | confidence {esc(item.get('confidence'))} | "
+                f"{esc(item.get('signal'))}</div>"
+                f"<div class='evidence-claim'>{esc(item.get('claim'))}</div>"
+                f"<div class='evidence-excerpt'>{esc(item.get('excerpt'))}</div>"
+                "</div>"
+            )
+        st.markdown(
+            "<div class='section'>"
+            + section_header("Claim Traceability", "Top Evidence Items")
+            + "".join(rows)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+    return summary
+
+
+def render_location(scorecard: dict[str, Any], property_name: str) -> None:
+    coords = scorecard.get("location_coordinates", {})
+    try:
+        lat = float(coords.get("latitude")) if coords.get("latitude") is not None else None
+        lon = float(coords.get("longitude")) if coords.get("longitude") is not None else None
+    except (ValueError, TypeError):
+        lat, lon = None, None
+
+    if lat is None or lon is None:
+        return
+
+    st.markdown(
+        "<div class='section'>"
+        + section_header("Location", "Mapped Property Context")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+    if folium and st_folium:
+        map_obj = folium.Map(location=[lat, lon], zoom_start=14, tiles="CartoDB positron")
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=8,
+            color="#175cd3",
+            weight=2,
+            fill=True,
+            fill_color="#175cd3",
+            fill_opacity=0.85,
+            popup=property_name,
+            tooltip=property_name,
+        ).add_to(map_obj)
+        st_folium(map_obj, width=None, height=320)
+    else:
+        st.info(f"Location coordinates found: {lat}, {lon}")
+
+
+def render_raw_expanders(intelligence: dict[str, Any]) -> None:
+    sections = [
+        ("K-RERA Official Search", "rera_search"),
+        ("Housing.com and NoBroker Market Search", "market_search"),
+        ("Reddit Community Search", "reddit_search"),
+        ("General Web Search", "web_search"),
+        ("Infrastructure Search", "infra_search"),
+        ("Google Review Snippets", "google_reviews"),
+    ]
+
+    with st.expander("Raw Priority Search Results"):
+        for title, key in sections:
+            st.markdown(f"#### {title}")
+            render_sources((intelligence.get(key) or {}).get("results", []))
+
+    with st.expander("Scraped Priority Pages"):
+        scraped = intelligence.get("scraped_pages") or {}
+        if scraped.get("success") and scraped.get("results"):
+            for page in scraped["results"]:
+                st.markdown(f"**{page.get('url', 'Unknown')}**")
+                markdown = page.get("markdown", "")
+                preview = markdown[:1200] + (f"\n\n... ({len(markdown)} total characters)" if len(markdown) > 1200 else "")
+                st.text(preview or "No markdown returned.")
+                st.divider()
+        else:
+            st.info("No scraped page data available.")
+
+    with st.expander("Government Crawl Results"):
+        crawled = intelligence.get("crawled_gov_pages") or {}
+        if crawled.get("success") and crawled.get("results"):
+            for page in crawled["results"]:
+                st.markdown(f"**{page.get('url', 'Unknown')}**")
+                markdown = page.get("markdown", "")
+                st.text(markdown[:1200] or "No markdown returned.")
+                st.divider()
+        else:
+            st.info("No government crawl data available.")
+
+    with st.expander("Anakin Agentic Research"):
+        agentic = intelligence.get("agentic_research") or {}
+        generated = agentic.get("generated_json")
+        if agentic.get("success") and generated:
+            if isinstance(generated, dict):
+                if generated.get("summary"):
+                    st.markdown(generated["summary"])
+                if generated.get("structured_data"):
+                    st.json(generated["structured_data"])
+            else:
+                st.markdown(str(generated))
+        else:
+            st.info(agentic.get("error", "No agentic research available."))
+
+    errors = intelligence.get("errors", [])
+    if errors:
+        with st.expander("Collection Warnings"):
+            for error in errors:
+                st.write(error)
+
+
+def render_raw_only(intelligence: dict[str, Any]) -> None:
+    st.markdown(
+        "<div class='section'>"
+        + section_header("Raw Intelligence", "Gemini Formatting Unavailable")
+        + "<p class='section-summary'>Anakin data was collected, but Gemini formatting did not complete. "
+        + "The raw source material and evidence ledger are still available below.</p>"
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+    render_evidence_ledger(intelligence)
+    render_raw_expanders(intelligence)
+
+
+def render_scorecard(property_name: str, scorecard: dict[str, Any], intelligence: dict[str, Any]) -> None:
+    evidence_summary = (intelligence.get("evidence_ledger") or {}).get("summary") or {}
+    evidence_score = evidence_summary.get("quality_score", 0)
+
+    st.markdown(
+        "<div class='report-hero'>"
+        "<div class='report-eyebrow'>Due Diligence Dossier</div>"
+        f"<div class='report-title'>{esc(property_name)}</div>"
+        "<div class='report-subtitle'>"
+        "Evidence-first investment review using Anakin source collection, priority domain search, "
+        f"and a source quality score of {esc(evidence_score)}/100."
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    render_risk_and_summary(scorecard)
+    render_metric_strip(scorecard, evidence_summary)
+    render_signal_panels(scorecard)
+
+    render_analysis_section(
+        "Financial",
+        "Market Price and Investment Viability",
+        scorecard.get("financial_viability", {}),
+        [
+            ("Price per sqft", "price_per_sqft"),
+            ("Price trend", "price_trend"),
+            ("Rental yield", "rental_yield"),
+        ],
+    )
+    render_analysis_section(
+        "Legal",
+        "K-RERA and Compliance Status",
+        scorecard.get("legal_rera_status", {}),
+        [
+            ("RERA number", "rera_number"),
+            ("Compliance", "compliance_status"),
+            ("Pending cases", "pending_cases"),
+        ],
+    )
+    infra = scorecard.get("infrastructure_development", {})
+    render_analysis_section(
+        "Infrastructure",
+        "Connectivity, Water, Roads, and Nearby Projects",
+        infra,
+        [],
+        extra_items=infra.get("key_projects", []),
+    )
+    community = scorecard.get("community_sentiment", {})
+    render_analysis_section(
+        "Community",
+        "Resident and Buyer Sentiment",
+        community,
+        [],
+        extra_items=(
+            coerce_list(community.get("common_praises", []))
+            + coerce_list(community.get("common_complaints", []))
+        ),
+    )
+    reviews = scorecard.get("google_reviews", {})
+    render_analysis_section(
+        "Reviews",
+        "Google Review Signal",
+        reviews,
+        [
+            ("Average rating", "average_rating"),
+            ("Total reviews", "total_reviews"),
+            ("Rating trend", "rating_trend"),
+        ],
+        extra_items=reviews.get("highlights", []),
+    )
+
+    render_evidence_ledger(intelligence)
+    render_location(scorecard, property_name)
+    render_raw_expanders(intelligence)
+
+
+def render_results(property_name: str, scorecard: dict[str, Any] | None, intelligence: dict[str, Any]) -> None:
+    if scorecard:
+        render_scorecard(property_name, scorecard, intelligence)
+    else:
+        render_raw_only(intelligence)
+
+
+def run_investigation(property_name: str, has_gemini: bool) -> None:
     """Execute the full pipeline: Anakin gathers data, Gemini formats it."""
-
-    with st.status("Skywalker Scout is investigating...", expanded=True) as status:
-        
-        # Lottie Animation
-        lottie_search = load_lottieurl("https://assets10.lottiefiles.com/packages/lf20_tijmpky4.json")
-        if lottie_search:
-            st_lottie(lottie_search, height=150, key="search_anim")
-
-        # Step 1: Anakin gathers ALL data
+    with st.status("Running due-diligence investigation...", expanded=True) as status:
         from anakin_engine import AnakinClient
 
         try:
@@ -388,318 +987,77 @@ def run_investigation(property_name, has_gemini):
             status.update(label="Investigation failed.", state="error")
             return
 
-        # Step 2: Format with Gemini (optional -- Anakin data is primary)
         scorecard = None
         if has_gemini:
-            st.write("Formatting results with Gemini...")
+            st.write("Formatting evidence into scorecard...")
             from rag_logic import format_scorecard
+
             try:
                 scorecard = format_scorecard(intelligence)
             except RuntimeError as exc:
-                st.write(f"Gemini formatting unavailable: {exc}")
-                st.write("Showing raw Anakin data instead.")
+                st.warning(f"Gemini formatting unavailable: {exc}")
+                st.write("Showing Anakin evidence and raw intelligence instead.")
 
-        st.write("Report generated.")
         status.update(label="Investigation complete.", state="complete")
 
+    store_report(property_name, scorecard, intelligence)
     render_results(property_name, scorecard, intelligence)
 
 
-def render_results(property_name, scorecard, intelligence):
-    """Render the due diligence report."""
+def main() -> None:
+    render_app_header()
+    stored_report = session_report()
+    stored_property_name = (stored_report or {}).get("property_name") or ""
 
-    st.markdown(f"""
-    <div style="text-align:center;margin:1.5rem 0 0.5rem;">
-        <span style="font-family:'Outfit';font-size:1.8rem;font-weight:700;color:#e6edf3;">
-            Due Diligence Report
-        </span><br/>
-        <span style="color:#8b95a5;font-size:1rem;">{property_name} -- Bengaluru</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if scorecard:
-        _render_scorecard(property_name, scorecard, intelligence)
-    else:
-        _render_raw_only(intelligence)
-
-
-def _render_scorecard(property_name, scorecard, intelligence):
-    """Render Gemini-formatted scorecard view."""
-
-    # Risk Meter + Executive Summary
-    col_risk, col_summary = st.columns([1, 2])
-
-    with col_risk:
-        risk_score = scorecard.get("risk_score", 50)
-        
-        # Plotly Gauge Chart for Risk Score
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=risk_score,
-            title={'text': "Risk Score", 'font': {'color': '#8b95a5', 'size': 20}},
-            number={'font': {'color': get_risk_color(risk_score), 'size': 50}},
-            gauge={
-                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "rgba(255,255,255,0.5)"},
-                'bar': {'color': get_risk_color(risk_score)},
-                'bgcolor': "rgba(0,0,0,0)",
-                'borderwidth': 2,
-                'bordercolor': "rgba(255,255,255,0.1)",
-                'steps': [
-                    {'range': [0, 25], 'color': "rgba(16,185,129,0.1)"},
-                    {'range': [25, 50], 'color': "rgba(52,211,153,0.1)"},
-                    {'range': [50, 65], 'color': "rgba(251,191,36,0.1)"},
-                    {'range': [65, 80], 'color': "rgba(245,158,11,0.1)"},
-                    {'range': [80, 100], 'color': "rgba(239,68,68,0.1)"}],
-            }
-        ))
-        fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            height=250,
-            margin=dict(l=10, r=10, t=40, b=10)
+    with st.sidebar:
+        st.markdown("## Investigation")
+        property_name_input = st.text_input(
+            "Property or Builder Name",
+            value=str(stored_property_name),
+            placeholder="e.g., JRC Wildwoods Sarjapur",
+            help="Enter a Bengaluru project, property, or builder name.",
         )
-        st.plotly_chart(fig, width="stretch")
+        investigate = st.button("Run Investigation", use_container_width=True)
+        clear_report = st.button("Clear Current Report", use_container_width=True)
+        st.divider()
+        st.markdown("### Source Priority")
+        st.caption("1. K-RERA official registry")
+        st.caption("2. Housing.com and NoBroker market data")
+        st.caption("3. Reddit community threads")
+        st.caption("4. Google review snippets")
+        st.caption("5. General web and infrastructure search")
 
-    with col_summary:
-        exec_summary = scorecard.get("executive_summary", "Analysis pending.")
-        st.markdown(f'<div class="summary-card">{exec_summary}</div>',
-                    unsafe_allow_html=True)
+    anakin_key = os.getenv("ANAKIN_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
 
-        fin = scorecard.get("financial_viability", {})
-        legal = scorecard.get("legal_rera_status", {})
-        grev = scorecard.get("google_reviews", {})
+    if not anakin_key:
+        st.warning("Missing ANAKIN_API_KEY. Add it to your .env file to run investigations.")
+    if not gemini_key:
+        st.info("GEMINI_API_KEY is not set. The app will show raw Anakin evidence without formatted scorecards.")
 
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.metric("Price/sqft", fin.get("price_per_sqft", "N/A"),
-                       fin.get("price_trend", ""))
-        with m2:
-            st.metric("RERA Status", legal.get("compliance_status", "Unknown"),
-                       f"{legal.get('pending_cases', 0)} cases")
-        with m3:
-            st.metric("Google Rating", grev.get("average_rating", "N/A"),
-                       grev.get("rating_trend", ""))
-                       
-        style_metric_cards(background_color="#1e2329", border_left_color="#00d2ff")
+    if clear_report:
+        st.session_state.pop("last_report", None)
+        render_empty_state()
+        return
 
-    st.divider()
-
-    # -- Location & PDF Export ------------------------------------------------
-    c_map, c_export = st.columns([3, 1])
-    with c_map:
-        coords = scorecard.get("location_coordinates", {})
-        try:
-            lat = float(coords.get("latitude")) if coords.get("latitude") is not None else None
-            lon = float(coords.get("longitude")) if coords.get("longitude") is not None else None
-        except (ValueError, TypeError):
-            lat, lon = None, None
-            
-        if lat and lon:
-            st.markdown("### Location")
-            try:
-                m = folium.Map(location=[lat, lon], zoom_start=14, tiles="CartoDB dark_matter")
-                folium.Marker([lat, lon], popup=property_name, tooltip=property_name).add_to(m)
-                st_folium(m, width=800, height=300)
-            except Exception as e:
-                st.error(f"Could not render map: {e}")
-            
-    with c_export:
-        st.markdown("### Export")
-        st.info("PDF Export is temporarily disabled for maintenance.")
-        # pdf_bytes = generate_pdf_report(property_name, scorecard)
-        # if pdf_bytes:
-        #     st.download_button(
-        #         label="Download PDF Report",
-        #         data=pdf_bytes,
-        #         file_name=f"{property_name.replace(' ', '_')}_Due_Diligence.pdf",
-        #         mime="application/pdf",
-        #         type="primary"
-        #     )
-            
-    st.divider()
-
-    # Scorecard Tabs
-    tabs = st.tabs(["Financial", "Legal / RERA", "Infrastructure", "Community", "Google Reviews"])
-
-    with tabs[0]:
-        render_section(scorecard.get("financial_viability", {}), "Financial Viability")
-
-    with tabs[1]:
-        render_section(scorecard.get("legal_rera_status", {}), "Legal & RERA Status")
-
-    with tabs[2]:
-        render_section(scorecard.get("infrastructure_development", {}), "Infrastructure & Development")
-        key_projects = scorecard.get("infrastructure_development", {}).get("key_projects", [])
-        if key_projects:
-            st.markdown("**Key Projects Nearby**")
-            for proj in key_projects:
-                st.markdown(f"<div class='flag-item'>[+] {proj}</div>", unsafe_allow_html=True)
-
-    with tabs[3]:
-        section = scorecard.get("community_sentiment", {})
-        render_section(section, "Community Sentiment")
-        praises = section.get("common_praises", [])
-        complaints = section.get("common_complaints", [])
-        if praises or complaints:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Praises**")
-                for p in praises:
-                    st.markdown(f"<div class='flag-item'>[+] {p}</div>",
-                                unsafe_allow_html=True)
-            with c2:
-                st.markdown("**Complaints**")
-                for c in complaints:
-                    st.markdown(f"<div class='flag-item'>[!] {c}</div>",
-                                unsafe_allow_html=True)
-
-    with tabs[4]:
-        grev = scorecard.get("google_reviews", {})
-        render_section(grev, "Google Maps Reviews")
-        highlights = grev.get("highlights", [])
-        if highlights:
-            for h in highlights:
-                st.markdown(f"<div class='flag-item'>-- {h}</div>",
-                            unsafe_allow_html=True)
-        total = grev.get("total_reviews")
-        trend = grev.get("rating_trend", "unknown")
-        if total:
-            st.markdown(
-                f"<div style='color:#8b95a5;font-size:0.85rem;margin-top:0.5rem;'>"
-                f"Based on {total} Google Maps reviews | Trend: {trend}</div>",
-                unsafe_allow_html=True,
-            )
-
-    st.divider()
-
-    # Red & Green Flags
-    col_red, col_green = st.columns(2)
-
-    with col_red:
-        st.markdown("""
-        <div class="glass-card" style="border-color:rgba(239,68,68,0.2);">
-            <div style="font-size:1.1rem;font-weight:600;color:#ef4444;margin-bottom:0.8rem;">
-                Red Flags
-            </div>
-        """, unsafe_allow_html=True)
-        red_flags = scorecard.get("red_flags", [])
-        if red_flags:
-            render_flags(red_flags, "red")
-        else:
-            st.markdown("<div style='color:#8b95a5;'>No red flags identified.</div>",
-                        unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with col_green:
-        st.markdown("""
-        <div class="glass-card" style="border-color:rgba(16,185,129,0.2);">
-            <div style="font-size:1.1rem;font-weight:600;color:#10b981;margin-bottom:0.8rem;">
-                Green Flags
-            </div>
-        """, unsafe_allow_html=True)
-        green_flags = scorecard.get("green_flags", [])
-        if green_flags:
-            render_flags(green_flags, "green")
-        else:
-            st.markdown("<div style='color:#8b95a5;'>No green flags identified.</div>",
-                        unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # Raw data expanders
-    _render_raw_expanders(intelligence)
-
-
-def _render_raw_only(intelligence):
-    """Render raw Anakin data when Gemini is unavailable."""
-    st.markdown("""
-    <div class="glass-card">
-        <div style="font-size:1.1rem;font-weight:600;color:#00d2ff;margin-bottom:0.8rem;">
-            Raw Anakin Intelligence
-        </div>
-        <p style="color:#8b95a5;">
-            Gemini formatting is unavailable. Showing raw Anakin data below.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Show agentic research summary if available
-    ar = intelligence.get("agentic_research", {})
-    if ar.get("success") and ar.get("generated_json"):
-        gj = ar["generated_json"]
-        summary = gj.get("summary", "") if isinstance(gj, dict) else str(gj)
-        if summary:
-            st.markdown(f'<div class="summary-card">{summary}</div>',
-                        unsafe_allow_html=True)
-
-    _render_raw_expanders(intelligence)
-
-
-def _render_raw_expanders(intelligence):
-    """Render expandable raw Anakin data sections."""
-
-    with st.expander("Anakin Web Search Results"):
-        ws = intelligence.get("web_search", {})
-        if ws.get("results"):
-            render_sources(ws["results"])
-        else:
-            st.info("No web search results available.")
-
-    with st.expander("Anakin Google Reviews Search"):
-        gr = intelligence.get("google_reviews", {})
-        if gr.get("results"):
-            render_sources(gr["results"])
-        else:
-            st.info("No Google review data available.")
-
-    with st.expander("Anakin URL Scraper -- Full Page Content"):
-        sp = intelligence.get("scraped_pages", {})
-        if sp.get("success") and sp.get("results"):
-            for page in sp["results"]:
-                url = page.get("url", "Unknown")
-                status = page.get("status", "unknown")
-                markdown = page.get("markdown", "")
-                st.markdown(f"**{url}** ({status})")
-                if markdown:
-                    # Show first 1000 chars of each page
-                    preview = markdown[:1000]
-                    if len(markdown) > 1000:
-                        preview += f"\n\n... ({len(markdown)} total characters)"
-                    st.text(preview)
-                st.divider()
-        else:
-            st.info("No scraped page data available.")
-
-
-    with st.expander("Anakin Agentic Research"):
-        ar = intelligence.get("agentic_research", {})
-        if ar.get("success") and ar.get("generated_json"):
-            gj = ar["generated_json"]
-            if isinstance(gj, dict):
-                summary = gj.get("summary", "")
-                if summary:
-                    st.markdown(summary)
-                structured = gj.get("structured_data")
-                if structured:
-                    st.subheader("Structured Data")
-                    st.json(structured)
-            else:
-                st.markdown(str(gj))
-        else:
-            error = ar.get("error", "No data available.") if ar else "Not executed."
-            st.info(f"Agentic research: {error}")
-
-    errors = intelligence.get("errors", [])
-    if errors:
-        with st.expander("Data Collection Warnings"):
-            for e in errors:
-                st.write(f"WARNING: {e}")
-
-    # Raw scorecard JSON if available
-    with st.expander("Raw JSON"):
-        st.json({
-            k: v for k, v in intelligence.items()
-            if k not in ("_raw_gemini_response",)
-        })
+    if investigate:
+        property_name = property_name_input or ""
+        clean_name = property_name.strip()
+        if not clean_name:
+            st.warning("Enter a property or builder name first.")
+            return
+        if not anakin_key:
+            st.error("Cannot proceed without ANAKIN_API_KEY.")
+            return
+        run_investigation(clean_name, has_gemini=bool(gemini_key))
+    elif stored_report:
+        render_results(
+            stored_report.get("property_name", "Property"),
+            stored_report.get("scorecard"),
+            stored_report.get("intelligence", {}),
+        )
+    else:
+        render_empty_state()
 
 
 if __name__ == "__main__":
