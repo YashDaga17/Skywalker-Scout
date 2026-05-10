@@ -43,24 +43,29 @@ st.markdown(
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-    --bg: #f5f7fb;
-    --panel: #ffffff;
-    --panel-soft: #f8fafc;
-    --border: #d9e2ec;
-    --text: #101828;
-    --muted: #667085;
-    --faint: #98a2b3;
-    --blue: #175cd3;
-    --blue-soft: #eff6ff;
-    --amber: #b54708;
-    --amber-soft: #fffaeb;
-    --clay: #7a271a;
-    --clay-soft: #fff4ed;
-    --slate: #344054;
+    --bg: #090f1d;
+    --bg-soft: #0d1628;
+    --panel: #111827;
+    --panel-soft: #0f172a;
+    --panel-raised: #152033;
+    --border: #253249;
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --faint: #64748b;
+    --blue: #60a5fa;
+    --blue-soft: rgba(96, 165, 250, 0.12);
+    --teal: #2dd4bf;
+    --amber: #f59e0b;
+    --amber-soft: rgba(245, 158, 11, 0.12);
+    --clay: #f97316;
+    --clay-soft: rgba(249, 115, 22, 0.12);
+    --slate: #cbd5e1;
 }
 
 .stApp {
-    background: var(--bg);
+    background:
+        radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.12), transparent 28rem),
+        linear-gradient(180deg, #090f1d 0%, #0b1220 55%, #090f1d 100%);
     color: var(--text);
     font-family: 'Inter', sans-serif;
 }
@@ -72,11 +77,12 @@ st.markdown(
 }
 
 [data-testid="stSidebar"] {
-    background: #0f172a;
+    background: #0b1220;
+    border-right: 1px solid var(--border);
 }
 
 [data-testid="stSidebar"] * {
-    color: #e5e7eb;
+    color: var(--text);
 }
 
 .app-header {
@@ -84,17 +90,21 @@ st.markdown(
     justify-content: space-between;
     align-items: flex-start;
     gap: 1rem;
-    padding: 1rem 0 1.2rem;
+    padding: 0.6rem 0 1rem;
     border-bottom: 1px solid var(--border);
     margin-bottom: 1.1rem;
 }
 
 .brand-title {
-    font-size: 2rem;
+    font-size: 1.85rem;
     font-weight: 800;
     letter-spacing: 0;
     color: var(--text);
     margin: 0;
+}
+
+h1 {
+    color: var(--text);
 }
 
 .brand-subtitle {
@@ -105,7 +115,7 @@ st.markdown(
 
 .status-pill {
     background: var(--blue-soft);
-    border: 1px solid #bfdbfe;
+    border: 1px solid rgba(96, 165, 250, 0.32);
     color: var(--blue);
     border-radius: 999px;
     padding: 0.45rem 0.75rem;
@@ -121,12 +131,12 @@ st.markdown(
 }
 
 .report-hero {
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    background: linear-gradient(180deg, rgba(21, 32, 51, 0.96) 0%, rgba(15, 23, 42, 0.96) 100%);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1.2rem 1.25rem;
     margin-bottom: 0.85rem;
-    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
 }
 
 .report-eyebrow {
@@ -157,7 +167,7 @@ st.markdown(
     border-radius: 8px;
     padding: 1.05rem 1.15rem;
     margin-bottom: 0.85rem;
-    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
 }
 
 .section-header {
@@ -197,7 +207,7 @@ st.markdown(
     border-radius: 999px;
     padding: 0.35rem 0.6rem;
     color: var(--slate);
-    background: var(--panel-soft);
+    background: var(--panel-raised);
     font-size: 0.82rem;
     font-weight: 800;
 }
@@ -210,7 +220,7 @@ st.markdown(
 }
 
 .risk-score-box {
-    background: var(--panel-soft);
+    background: var(--panel-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1rem;
@@ -240,7 +250,7 @@ st.markdown(
 }
 
 .risk-track {
-    background: #e4e7ec;
+    background: #1e293b;
     border-radius: 999px;
     height: 10px;
     overflow: hidden;
@@ -253,7 +263,7 @@ st.markdown(
 }
 
 .summary-box {
-    background: #f8fafc;
+    background: var(--panel-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1rem;
@@ -274,10 +284,24 @@ st.markdown(
 }
 
 .metric-tile {
-    background: var(--panel-soft);
+    background: var(--panel-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.8rem;
+}
+
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.chart-panel {
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem;
+    min-height: 320px;
 }
 
 .metric-label {
@@ -306,7 +330,7 @@ st.markdown(
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.95rem;
-    background: var(--panel-soft);
+    background: var(--panel-raised);
 }
 
 .signal-panel.concern {
@@ -315,7 +339,7 @@ st.markdown(
 }
 
 .signal-panel.positive {
-    border-color: #bfdbfe;
+    border-color: rgba(96, 165, 250, 0.32);
     background: var(--blue-soft);
 }
 
@@ -335,7 +359,7 @@ st.markdown(
     color: var(--slate);
     font-size: 0.92rem;
     line-height: 1.48;
-    border-top: 1px solid rgba(16, 24, 40, 0.08);
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
     padding-top: 0.45rem;
 }
 
@@ -351,7 +375,7 @@ st.markdown(
 }
 
 .source-row {
-    background: var(--panel-soft);
+    background: var(--panel-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.75rem;
@@ -423,23 +447,60 @@ div[data-testid="stMetric"] {
 }
 
 .stButton > button {
-    background: #175cd3;
+    background: #2563eb;
     color: white;
-    border: 1px solid #175cd3;
+    border: 1px solid #3b82f6;
     border-radius: 8px;
-    font-weight: 800;
+    font-weight: 600;
 }
 
 .stTextInput input {
-    background: #ffffff;
+    background: #0f172a;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #101828 !important;
+    color: var(--text) !important;
+}
+
+.stTextInput input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35);
+}
+
+.route-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.58);
+    padding: 0.75rem;
+}
+
+.route-item {
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+    padding: 0.62rem 0;
+}
+
+.route-item:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
+.route-label {
+    color: var(--text);
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+
+.route-detail {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    margin-top: 0.15rem;
 }
 
 @media (max-width: 900px) {
     .app-header,
     .risk-overview,
     .signal-grid,
+    .chart-grid,
     .metric-row {
         grid-template-columns: 1fr;
         display: grid;
@@ -472,14 +533,14 @@ def risk_label(score: int) -> str:
 
 def risk_color(score: int) -> str:
     if score <= 25:
-        return "#175cd3"
+        return "#60a5fa"
     if score <= 50:
-        return "#0f766e"
+        return "#2dd4bf"
     if score <= 65:
-        return "#b54708"
+        return "#f59e0b"
     if score <= 80:
-        return "#93370d"
-    return "#7a271a"
+        return "#fb923c"
+    return "#f87171"
 
 
 def session_report() -> dict[str, Any] | None:
@@ -500,6 +561,22 @@ def as_int(value: Any, fallback: int = 50) -> int:
         return int(float(value))
     except (TypeError, ValueError):
         return fallback
+
+
+def as_float(value: Any, fallback: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def progress_from_message(message: str, current: int) -> int:
+    match = re.search(r"Step\s+(\d+)/(\d+)", message)
+    if not match:
+        return current
+    step = int(match.group(1))
+    total = max(1, int(match.group(2)))
+    return max(current, min(95, round(step / total * 100)))
 
 
 def coerce_list(value: Any) -> list[Any]:
@@ -549,7 +626,7 @@ def render_app_header() -> None:
         """
         <div class="app-header">
             <div>
-                <h1 class="brand-title">Skywalker Scout</h1>
+                <div class="brand-title">Skywalker Scout</div>
                 <div class="brand-subtitle">Institutional real-estate due diligence for Bengaluru properties.</div>
             </div>
             <div class="status-pill">Anakin-first intelligence</div>
@@ -563,8 +640,8 @@ def render_empty_state() -> None:
     st.markdown(
         """
         <div class="empty-state">
-            Enter a Bengaluru property or builder in the sidebar and run an investigation.
-            The report will prioritize K-RERA, Housing.com, NoBroker, Reddit, and Google review snippets.
+            Select a Bengaluru property or builder in the sidebar and run an investigation.
+            The dossier will prioritize official, market, community, and review sources in that order.
         </div>
         """,
         unsafe_allow_html=True,
@@ -663,6 +740,107 @@ def render_metric_strip(scorecard: dict[str, Any], evidence_summary: dict[str, A
         + "</div></div>",
         unsafe_allow_html=True,
     )
+
+
+def section_scores(scorecard: dict[str, Any]) -> list[tuple[str, int]]:
+    sections = [
+        ("Financial", scorecard.get("financial_viability", {})),
+        ("Legal/RERA", scorecard.get("legal_rera_status", {})),
+        ("Infrastructure", scorecard.get("infrastructure_development", {})),
+        ("Community", scorecard.get("community_sentiment", {})),
+        ("Reviews", scorecard.get("google_reviews", {})),
+    ]
+    return [(label, max(0, min(10, as_int(data.get("score"), 5)))) for label, data in sections]
+
+
+def render_report_charts(scorecard: dict[str, Any], intelligence: dict[str, Any]) -> None:
+    scores = section_scores(scorecard)
+    labels = [label for label, _score in scores]
+    values = [score for _label, score in scores]
+
+    score_fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker_color="#60a5fa",
+            text=[f"{value}/10" for value in values],
+            textposition="auto",
+            hovertemplate="%{y}: %{x}/10<extra></extra>",
+        )
+    )
+    score_fig.update_layout(
+        title="Section Scores",
+        xaxis=dict(range=[0, 10], gridcolor="#253249", zerolinecolor="#253249"),
+        yaxis=dict(autorange="reversed"),
+        height=300,
+        margin=dict(l=10, r=10, t=42, b=20),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#cbd5e1"),
+    )
+
+    ledger = intelligence.get("evidence_ledger") or {}
+    sources = ledger.get("sources") or []
+    source_counts: dict[str, int] = {}
+    reliability_totals: dict[str, float] = {}
+    for source in sources:
+        source_type = str(source.get("source_type", "unknown")).replace("_", " ").title()
+        source_counts[source_type] = source_counts.get(source_type, 0) + 1
+        reliability_totals[source_type] = reliability_totals.get(source_type, 0) + as_float(source.get("reliability"))
+
+    source_labels = list(source_counts.keys()) or ["No sources"]
+    source_values = list(source_counts.values()) or [1]
+    source_reliability = [
+        round((reliability_totals[label] / source_counts[label]) * 100)
+        for label in source_counts
+    ] or [0]
+
+    source_fig = go.Figure(
+        data=[
+            go.Bar(
+                name="Sources",
+                x=source_labels,
+                y=source_values,
+                marker_color="#2dd4bf",
+                yaxis="y",
+                hovertemplate="%{x}: %{y} sources<extra></extra>",
+            ),
+            go.Scatter(
+                name="Avg reliability",
+                x=source_labels,
+                y=source_reliability,
+                mode="lines+markers",
+                marker=dict(color="#f59e0b", size=8),
+                line=dict(color="#f59e0b", width=2),
+                yaxis="y2",
+                hovertemplate="%{x}: %{y}% reliability<extra></extra>",
+            ),
+        ]
+    )
+    source_fig.update_layout(
+        title="Source Mix and Reliability",
+        height=300,
+        margin=dict(l=10, r=10, t=42, b=20),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#cbd5e1"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        yaxis=dict(title="Count", gridcolor="#253249", zerolinecolor="#253249"),
+        yaxis2=dict(title="Reliability", overlaying="y", side="right", range=[0, 100], showgrid=False),
+    )
+
+    st.markdown(
+        "<div class='section'>"
+        + section_header("Analytics", "Score and Source Diagnostics")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+    col_score, col_source = st.columns(2)
+    with col_score:
+        st.plotly_chart(score_fig, use_container_width=True, config={"displayModeBar": False})
+    with col_source:
+        st.plotly_chart(source_fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def render_analysis_section(
@@ -905,6 +1083,7 @@ def render_scorecard(property_name: str, scorecard: dict[str, Any], intelligence
 
     render_risk_and_summary(scorecard)
     render_metric_strip(scorecard, evidence_summary)
+    render_report_charts(scorecard, intelligence)
     render_signal_panels(scorecard)
 
     render_analysis_section(
@@ -973,23 +1152,33 @@ def render_results(property_name: str, scorecard: dict[str, Any] | None, intelli
 
 def run_investigation(property_name: str, has_gemini: bool) -> None:
     """Execute the full pipeline: Anakin gathers data, Gemini formats it."""
+    status_events: list[str] = []
+
     with st.status("Running due-diligence investigation...", expanded=True) as status:
         from anakin_engine import AnakinClient
+
+        progress = st.progress(0)
+        latest_status = st.empty()
+
+        def record_status(message: str) -> None:
+            status_events.append(message)
+            progress.progress(progress_from_message(message, len(status_events) if len(status_events) < 8 else 80))
+            latest_status.markdown(f"**Current task:** {esc(message)}")
 
         try:
             client = AnakinClient()
             intelligence = client.run_full_pipeline(
                 property_name,
-                status_callback=lambda msg: st.write(msg),
+                status_callback=record_status,
             )
         except Exception as exc:
             st.error(f"Anakin engine error: {exc}")
-            status.update(label="Investigation failed.", state="error")
+            status.update(label="Investigation failed.", state="error", expanded=True)
             return
 
         scorecard = None
         if has_gemini:
-            st.write("Formatting evidence into scorecard...")
+            record_status("Formatting evidence into scorecard...")
             from rag_logic import format_scorecard
 
             try:
@@ -998,7 +1187,12 @@ def run_investigation(property_name: str, has_gemini: bool) -> None:
                 st.warning(f"Gemini formatting unavailable: {exc}")
                 st.write("Showing Anakin evidence and raw intelligence instead.")
 
-        status.update(label="Investigation complete.", state="complete")
+        progress.progress(100)
+        latest_status.markdown("**Current task:** Report ready.")
+        with st.expander("Pipeline event log", expanded=False):
+            for event in status_events:
+                st.caption(event)
+        status.update(label="Investigation complete.", state="complete", expanded=False)
 
     store_report(property_name, scorecard, intelligence)
     render_results(property_name, scorecard, intelligence)
@@ -1007,25 +1201,50 @@ def run_investigation(property_name: str, has_gemini: bool) -> None:
 def main() -> None:
     render_app_header()
     stored_report = session_report()
-    stored_property_name = (stored_report or {}).get("property_name") or ""
+    stored_property_name = (stored_report or {}).get("property_name") or "JRC Wildwoods, Sarjapur road"
 
     with st.sidebar:
-        st.markdown("## Investigation")
+        st.markdown("### Investigation")
         property_name_input = st.text_input(
             "Property or Builder Name",
             value=str(stored_property_name),
             placeholder="e.g., JRC Wildwoods Sarjapur",
             help="Enter a Bengaluru project, property, or builder name.",
         )
-        investigate = st.button("Run Investigation", use_container_width=True)
-        clear_report = st.button("Clear Current Report", use_container_width=True)
+        col_run, col_clear = st.columns(2)
+        with col_run:
+            investigate = st.button("Run", type="primary", use_container_width=True)
+        with col_clear:
+            clear_report = st.button("Clear", type="secondary", use_container_width=True)
         st.divider()
-        st.markdown("### Source Priority")
-        st.caption("1. K-RERA official registry")
-        st.caption("2. Housing.com and NoBroker market data")
-        st.caption("3. Reddit community threads")
-        st.caption("4. Google review snippets")
-        st.caption("5. General web and infrastructure search")
+        st.markdown("### Source Routing")
+        st.markdown(
+            """
+            <div class="route-list">
+                <div class="route-item">
+                    <div class="route-label">Legal Registry</div>
+                    <div class="route-detail">K-RERA official project records and compliance status.</div>
+                </div>
+                <div class="route-item">
+                    <div class="route-label">Market Pricing</div>
+                    <div class="route-detail">Housing.com and NoBroker pricing, resale, rent, and amenities.</div>
+                </div>
+                <div class="route-item">
+                    <div class="route-label">Community Signal</div>
+                    <div class="route-detail">Reddit discussion threads for buyer and resident experience.</div>
+                </div>
+                <div class="route-item">
+                    <div class="route-label">Review Signal</div>
+                    <div class="route-detail">Google-indexed rating and review snippets.</div>
+                </div>
+                <div class="route-item">
+                    <div class="route-label">Infrastructure Context</div>
+                    <div class="route-detail">Road, metro, water, and local development sources.</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     anakin_key = os.getenv("ANAKIN_API_KEY")
     gemini_key = os.getenv("GEMINI_API_KEY")

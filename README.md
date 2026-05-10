@@ -2,7 +2,7 @@
 
 Autonomous Real Estate Due Diligence Engine for Bengaluru properties.
 
-Skywalker Scout transforms unstructured web data -- RERA filings, Reddit threads, Google Maps reviews, news articles, and forum discussions -- into structured, institutional-grade investment reports. It combines Anakin AI for web intelligence gathering with Google Gemini for data synthesis and audit.
+Skywalker Scout transforms unstructured web data -- K-RERA filings, market listings, Reddit threads, Google review snippets, news articles, and forum discussions -- into structured, institutional-grade investment dossiers. It combines Anakin AI for web intelligence gathering, a deterministic evidence ledger for auditability, and Google Gemini for strict JSON formatting.
 
 ---
 
@@ -13,7 +13,7 @@ Evaluating a real estate investment in Bengaluru requires manually checking doze
 - **RERA portal** for registration and compliance status
 - **Consumer forums** for pending legal complaints
 - **Reddit and forums** for homebuyer experiences (delays, water issues, maintenance quality)
-- **Google Maps reviews** for ground-truth resident feedback
+- **Google-indexed review snippets** for rating and resident feedback signals
 - **Property portals** (99acres, MagicBricks, CommonFloor) for pricing trends
 - **News outlets** for builder reputation and legal history
 
@@ -21,21 +21,34 @@ This process takes hours per property and produces inconsistent results. Data is
 
 ## Solution
 
-Skywalker Scout automates the entire due diligence workflow in three stages:
+Skywalker Scout automates the entire due diligence workflow in four stages:
 
-1. **Web Intelligence (Anakin AI)** -- Performs targeted web searches, fetches Google Maps reviews, and runs deep agentic research to gather data from all relevant sources automatically.
+1. **Web Intelligence (Anakin AI)** -- Performs targeted web searches, gathers Google-indexed review snippets, scrapes priority property and Reddit pages, crawls official sites, and runs deep agentic research.
 
-2. **AI Synthesis (Google Gemini)** -- Sends all gathered intelligence to Gemini 3.1 Flash Lite, which reconciles conflicting information, identifies red/green flags, and produces a structured Due Diligence Scorecard with risk scoring.
+2. **Evidence Ledger** -- Converts raw Anakin output into traceable evidence items with source type, reliability, confidence, freshness, signal, and contradiction checks.
 
-3. **Evidence Ledger** -- Converts raw Anakin output into traceable claims with source type, source reliability, confidence, freshness, and contradiction checks.
+3. **AI Synthesis (Google Gemini)** -- Sends the gathered intelligence and evidence ledger to Gemini 3.1 Flash Lite, which formats the data into a strict Due Diligence Scorecard JSON without adding new research.
 
 4. **Report Dashboard (Streamlit)** -- Presents the results as a single professional due-diligence dossier with risk summary, concerns, positive signals, financial/legal/community sections, and source evidence.
 
 ---
 
+## Current Capabilities
+
+- **Priority source routing**: K-RERA first, then Housing.com and NoBroker, Reddit community threads, Google review snippets, and infrastructure/general web search.
+- **Evidence-first reporting**: every important source is classified and scored for reliability before Gemini formats the report.
+- **Contradiction detection**: flags categories where positive and negative evidence both appear.
+- **Financial viability signals**: captures pricing, rent, resale, amenities, and market-source evidence where available.
+- **Legal/RERA review**: prioritizes official `rera.karnataka.gov.in` and other `.gov.in` / `.nic.in` domains.
+- **Community intelligence**: searches Reddit with strict subreddit operators and scrapes discovered thread URLs instead of scraping Reddit homepages.
+- **Review intelligence**: uses Anakin Search snippets for Google ratings/reviews rather than scraping Google Maps directly.
+- **Professional dossier UI**: dark institutional theme, compact pipeline status, persisted last report, risk/strength sections, analytics charts, evidence ledger, and raw source expanders.
+
+---
+
 ## Architecture
 
-Anakin does ALL the data gathering. Gemini only formats the output.
+Anakin does ALL data gathering. Gemini only formats the output. The evidence engine adds deterministic audit metadata before Gemini receives the final formatting prompt.
 
 ```
 User Input (Property Name)
@@ -43,15 +56,15 @@ User Input (Property Name)
         v
 +------------------+
 |  Anakin Search    |  POST /v1/search (synchronous)
-|  (Web + Infra +   |  Property data, Infrastructure, and Google Maps reviews
-|   Reviews)        |  Returns URLs, titles, snippets, dates
+|  Priority Queries |  K-RERA, Housing.com, NoBroker, Reddit,
+|                   |  Google review snippets, infrastructure
 +------------------+
         |
         v
 +------------------+
 |  Anakin Scraper   |  POST /v1/url-scraper/batch (with useBrowser=True)
-|  & Crawl API      |  Bypasses bot protections to scrape top 5 URLs.
-|  (Anti-Bot)       |  Deep crawls official .gov.in/.nic.in sites.
+|  & Crawl API      |  Scrapes priority market/community URLs.
+|  (Anti-Bot)       |  Crawls K-RERA/.gov.in/.nic.in where found.
 +------------------+
         |
         v
@@ -63,15 +76,22 @@ User Input (Property Name)
         |
         v
 +------------------+
+|  Evidence Ledger  |  Deterministic source classification,
+|  & Reliability    |  reliability, confidence, freshness,
+|  Engine           |  signal, contradiction checks
++------------------+
+        |
+        v
++------------------+
 |  Gemini 3.1       |  google-genai SDK (FORMATTER ONLY)
-|  Flash Lite       |  Reformats Anakin data into JSON scorecard
+|  Flash Lite       |  Reformats evidence into JSON scorecard
 |  (Optional)       |  Does NOT generate new research
 +------------------+
         |
         v
 +------------------+
-|  Streamlit UI     |  Plotly risk gauge, sidebar controls, scorecard tabs,
-|  (Dashboard)      |  red/green flags, raw data expanders
+|  Streamlit UI     |  Dark professional dossier, compact status,
+|  (Dashboard)      |  analytics charts, persisted report, raw data
 +------------------+
 ```
 
@@ -80,8 +100,8 @@ User Input (Property Name)
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| Frontend | Streamlit 1.30+ | Interactive dashboard with dark theme and sidebar |
-| Visualizations | Plotly | Interactive gauge charts and data rendering |
+| Frontend | Streamlit 1.30+ | Professional dark dossier UI, sidebar controls, status/progress, expanders |
+| Visualizations | Plotly | Section score chart and source mix/reliability diagnostics |
 | Data Engine | Anakin Scraper API | Search API, URL Scraper (Anti-Bot), Crawl API, Agentic Search |
 | Evidence Engine | Python | Source classification, reliability scoring, evidence ledger, contradiction checks |
 | Formatter | Google Gemini 3.1 | Reformats Anakin data into structured JSON scorecard |
@@ -103,6 +123,19 @@ Skywalker-Scout/
     .streamlit/
         config.toml      # Streamlit dark theme configuration
 ```
+
+## Source Routing
+
+The pipeline uses explicit source priorities instead of treating all search results equally:
+
+| Priority | Source | Purpose |
+|----------|--------|---------|
+| 1 | `rera.karnataka.gov.in` | Official project registration, approval, and compliance status |
+| 2 | Housing.com | Structured pricing, amenities, possession, rent, resale, and market context |
+| 3 | NoBroker.in | Owner-written sale/rent descriptions and practical property details |
+| 4 | Reddit `r/bangalore`, `r/IndiaInvestments` | Community complaints, buyer sentiment, water/traffic/builder issues |
+| 5 | Google-indexed snippets | Aggregate rating and helpful review text without scraping Google Maps directly |
+| 6 | General web/infrastructure sources | Roads, metro, water, local development, builder/news context |
 
 ## Setup
 
@@ -168,10 +201,10 @@ The `AnakinClient` class provides comprehensive intelligence gathering:
 - **`reddit_community_search(property_name)`** -- Searches Reddit threads through strict subreddit operators before scraping thread URLs.
 
 **URL Scraper** (`POST /v1/url-scraper/batch` -- async with polling)
-- **`batch_scrape_urls(urls, use_browser=True)`** -- Scrapes top property URLs using a stealth, anti-bot cloud browser to bypass Cloudflare and security checks.
+- **`batch_scrape_urls(urls, use_browser=True)`** -- Scrapes priority market, community, property, and infrastructure URLs using a stealth, anti-bot cloud browser.
 
 **Crawl API** (`POST /v1/crawl` -- async with polling)
-- **`submit_crawl_job(url, use_browser=True)`** -- Used specifically to deep-crawl official government websites (e.g., RERA Karnataka, BBMP) discovered during the search phase.
+- **`submit_crawl_job(url, use_browser=True)`** -- Used specifically to deep-crawl official K-RERA, `.gov.in`, and `.nic.in` websites discovered during the search phase.
 
 **Agentic Search** (`POST /v1/agentic-search` -- async with polling)
 - **`submit_agentic_search(prompt)`** -- Starts a 4-stage deep research pipeline.
@@ -181,13 +214,13 @@ All methods return structured dicts with `success`, `error`, and data fields. HT
 
 ### 2. RAG Logic (`rag_logic.py`)
 
-The `gemini_fixer(intelligence)` function:
+The `format_scorecard(intelligence)` function:
 
-1. Formats all raw Anakin data into a structured markdown prompt
-2. Sends it to Gemini 3.1 Flash Lite with a detailed system prompt defining the Due Diligence Scorecard schema
-3. Uses `response_mime_type="application/json"` to ensure structured output
-4. Parses and validates the JSON response
-5. Computes a composite risk score (0-100) from section scores
+1. Formats raw Anakin data, priority search results, scraped pages, crawled government pages, agentic research, and the evidence ledger into a structured prompt.
+2. Sends the prompt to Gemini 3.1 Flash Lite with strict formatter-only instructions.
+3. Uses `response_mime_type="application/json"` to ensure structured output.
+4. Parses and validates the JSON response.
+5. Computes a composite risk score (0-100) from section scores when needed.
 
 The scorecard contains: Financial Viability, Legal/RERA Status, Community Sentiment, Google Reviews, Risk Score, Executive Summary, Red Flags, and Green Flags.
 
@@ -199,19 +232,31 @@ The evidence engine builds an auditable trail from Anakin data before Gemini for
 - Gives priority to `rera.karnataka.gov.in`, then Housing.com, NoBroker, Reddit, and Google review snippets.
 - Produces evidence items with claim, category, source id, confidence, freshness, and signal.
 - Detects simple contradictions, such as positive and negative evidence appearing in the same category.
+- Computes a report evidence quality score from source reliability, source coverage, official-source count, and evidence volume.
+
+The ledger is included in the Gemini prompt and also rendered in the Streamlit dossier so users can audit the report.
 
 ### 4. Streamlit App (`app.py`)
 
 The UI provides:
 
-- **Sidebar Controls** for entering property names and showing source-priority order.
-- **Live Status Updates** showing each pipeline stage in real-time.
-- **Plotly Risk Meter** -- Dynamic gauge chart with professional exposure bands.
-- **Executive Summary** -- 3-4 sentence investment verdict based on official data.
+- **Professional dark theme** configured in `.streamlit/config.toml` and reinforced with app-level CSS.
+- **Sidebar Controls** with Run/Clear actions and a source-routing panel.
+- **Compact Pipeline Status** using `st.status`, `st.progress`, and a collapsed event log so Anakin logs do not overwhelm the main page.
+- **Persisted Last Report** using `st.session_state["last_report"]`, so completed results remain visible after Streamlit reruns.
+- **Executive Summary** with overall exposure score and risk bar.
+- **Plotly Analytics** including section score diagnostics and source mix/reliability diagnostics.
 - **Single Dossier Flow** -- Financial, Legal/RERA, Infrastructure, Community, Reviews, and Evidence sections in one scrollable report.
-- **Critical Concerns / Positive Signals** -- Investment risks and supporting positives presented together.
+- **Risk Flags / Strength Signals** -- Investment risks and supporting positives presented together.
 - **Evidence Ledger** -- Source reliability, confidence, and top evidence items.
 - **Raw Intelligence** -- Expandable view of all source data from Anakin to maintain full transparency.
+
+### UI Design Notes
+
+- The interface intentionally avoids authentication/login flows and avoids decorative landing-page content.
+- The main report is built as an operational dashboard/dossier, not a marketing page.
+- The theme uses a restrained dark slate palette with blue/teal/amber accents for a professional investment-analysis feel.
+- Google Maps markers use `folium.CircleMarker` to avoid broken Leaflet marker PNG requests.
 
 ---
 
@@ -229,9 +274,23 @@ The application is designed for resilience:
 
 - All Anakin API calls use `try/except` blocks with structured error returns
 - Exponential backoff on polling prevents hammering the API
-- Configurable timeouts (30s for search, 180s for deep research)
+- Configurable timeouts: 30s for synchronous search, 120s for scrape/crawl polling, and up to 240-300s for agentic research
 - Missing API keys are detected at startup with clear error messages
 - Gemini failures raise explicit errors rather than returning stale/mock data
+- Streamlit reruns preserve the last completed report in session state
+- Pipeline logs are captured in a compact status container rather than printed as a wall of text
+
+---
+
+## Recent Improvements
+
+- Added `evidence_engine.py` for deterministic source classification, reliability scoring, evidence items, and contradiction detection.
+- Added targeted Anakin source methods for K-RERA, Housing.com, NoBroker, Reddit, and Google review snippets.
+- Reworked the Streamlit UI into a persisted dark professional dossier.
+- Added compact `st.status` execution tracking with progress and collapsed event logs.
+- Added Plotly section score and source reliability charts.
+- Fixed report disappearance after Streamlit reruns by storing the last report in `st.session_state`.
+- Replaced default Leaflet markers with `folium.CircleMarker` to avoid missing marker icon requests.
 
 ---
 
